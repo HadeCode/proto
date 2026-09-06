@@ -1,0 +1,83 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import 'tailwindcss';
+
+@theme inline {
+  --color-background: #080B10;
+  --color-bg-secondary: #0D1117;
+  --color-card: #11161D;
+  --color-card-elevated: #151B23;
+  --color-border: #242B35;
+  --color-text-primary: #F3F5F7;
+  --color-text-secondary: #9AA4B2;
+  --color-text-muted: #66707D;
+  --color-accent: #20D3A2;
+  --color-severity-low: #4C9AFF;
+  --color-severity-medium: #F2C94C;
+  --color-severity-high: #F2994A;
+  --color-severity-critical: #EB5757;
+}
+
+html, body, #root {
+  height: 100%;
+  background-color: #080B10;
+  color: #F3F5F7;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+}
+
+/* Hide scrollbars by default, show on hover */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #242B35;
+  border-radius: 2px;
+  opacity: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #66707D;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+
+/* Severity colors */
+.severity-critical { color: #EB5757; }
+.severity-high { color: #F2994A; }
+.severity-medium { color: #F2C94C; }
+.severity-low { color: #4C9AFF; }
+
+.bg-severity-critical { background-color: rgba(235,87,87,0.12); color: #EB5757; border: 1px solid rgba(235,87,87,0.25); }
+.bg-severity-high { background-color: rgba(242,153,74,0.12); color: #F2994A; border: 1px solid rgba(242,153,74,0.25); }
+.bg-severity-medium { background-color: rgba(242,201,76,0.12); color: #F2C94C; border: 1px solid rgba(242,201,76,0.25); }
+.bg-severity-low { background-color: rgba(76,154,255,0.12); color: #4C9AFF; border: 1px solid rgba(76,154,255,0.25); }
+.bg-severity-success { background-color: rgba(32,211,162,0.12); color: #20D3A2; border: 1px solid rgba(32,211,162,0.25); }
+
+/* Pulse animation for live indicators */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.animate-pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+/* Subtle row hover */
+tr.hoverable:hover td {
+  background-color: rgba(36,43,53,0.5);
+}

@@ -1,0 +1,11 @@
+{
+  "title": "ARGUS-ONE",
+  "description": "Autonomous Threat Detection & Response Engine with Multiscale Machine Learning and Behavioral Defense",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
