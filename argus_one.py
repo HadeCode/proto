@@ -345,15 +345,16 @@ class ArgusOneDetector:
                             "packets_out": flow.packets_out, "packets_in": flow.packets_in,
                             "tcp_flags": flow.tcp_flags, "context": dict(flow.context),
                         }
-                        features = FlowFeatureExtractor.extract_from_window(
-                            [{"timestamp": item.timestamp, "src_ip": item.src_ip, "dst_ip": item.dst_ip,
+                        window_flows = [{"timestamp": item.timestamp, "src_ip": item.src_ip, "dst_ip": item.dst_ip,
                               "src_port": item.src_port, "dst_port": item.dst_port, "protocol": item.protocol,
                               "bytes_out": item.bytes_out, "bytes_in": item.bytes_in,
                               "packets_out": item.packets_out, "packets_in": item.packets_in,
-                              "tcp_flags": item.tcp_flags, "context": dict(item.context)} for item in recent],
+                              "tcp_flags": item.tcp_flags, "context": dict(item.context)} for item in recent]
+                        features = FlowFeatureExtractor.extract_from_window(
+                            window_flows,
                             target_flow=target_flow,
                         )
-                        ml_pred = self.ml_engine.predict(features, target_threat_hint=f.threat_class)
+                        ml_pred = self.ml_engine.predict(features, target_threat_hint=f.threat_class, flows=window_flows)
                     except Exception:
                         ml_pred = None
                 alerts.append(self._alert(f, flow.timestamp, ml_pred))
@@ -397,7 +398,8 @@ class ArgusOneDetector:
             alert["ml_model"] = ml_pred.model_name
             alert["anomaly_score"] = round(ml_pred.anomaly_score, 4)
             alert["top_features"] = ml_pred.top_features
-            alert["detection_mode"] = "HYBRID_FUSION" if ml_pred.is_attack else "RULE_SIGNATURE"
+            alert["detection_mode"] = "GOVERNED_META_CONTROLLER" if ml_pred.is_attack else "RULE_SIGNATURE"
+            alert["governance"] = ml_pred.governance
         else:
             alert["detection_mode"] = "RULE_SIGNATURE"
         return alert

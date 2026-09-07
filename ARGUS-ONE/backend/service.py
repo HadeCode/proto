@@ -204,6 +204,20 @@ class DetectionService:
             """, (utc(), alert_id, src_ip, dst_ip, protocol, predicted_class, confidence, true_class, feedback_type, json.dumps(features), notes))
             self.db.commit()
 
+            # Trigger immediate online adaptation in the Self-Learning Meta-Controller
+            online_adaptation = {}
+            if self.ml_engine and hasattr(self.ml_engine, "learn_from_feedback"):
+                try:
+                    online_adaptation = self.ml_engine.learn_from_feedback(
+                        features=features,
+                        predicted_class=predicted_class,
+                        true_class=true_class,
+                        feedback_type=feedback_type,
+                        notes=notes,
+                    )
+                except Exception as e:
+                    online_adaptation = {"error": str(e)}
+
             return {
                 "success": True,
                 "alert_id": alert_id,
@@ -211,7 +225,8 @@ class DetectionService:
                 "true_class": true_class,
                 "feedback_type": feedback_type,
                 "notes": notes,
-                "message": "Feedback recorded into secondary dataset. Active replay will retrain on next cycle.",
+                "online_adaptation": online_adaptation,
+                "message": "Feedback recorded. Meta-Controller adapted online and buffered for retraining.",
             }
 
     def get_feedback_summary(self):
@@ -385,7 +400,7 @@ class DetectionService:
             raise RuntimeError("Machine learning engine is not available")
         from argus_ml import FlowFeatureExtractor
         features = FlowFeatureExtractor.extract_from_window([flow_dict], target_flow=flow_dict)
-        pred = self.ml_engine.predict(features)
+        pred = self.ml_engine.predict(features, flows=[flow_dict])
         return {
             "prediction": pred.to_dict(),
             "features": features,

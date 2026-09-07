@@ -115,7 +115,7 @@ class MLTrainRequest(BaseModel):
 
 
 class MLSwitchRequest(BaseModel):
-    model_type: Literal["random_forest", "xgboost"]
+    model_type: Literal["meta_controller", "random_forest", "xgboost"]
 
 
 @app.get("/api/ml/status")
