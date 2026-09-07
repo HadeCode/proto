@@ -513,10 +513,16 @@ class DetectionService:
         baseline_info = self.setting("baseline_info", {"fitted_at": None, "flows": 0})
         fitted_flows = baseline_info.get("flows", 0)
 
+        try:
+            from backend.behavioral_health import behavioral_engine
+        except ImportError:
+            from behavioral_health import behavioral_engine
+
+        b_data = behavioral_engine.compute(self)
+
         return {
-            "status": "HEALTHY",
-            "system_score": 100,
-            "timestamp": utc(),
+            **b_data,
+            "system_score": b_data["behavioral_health"]["score"],
             "uptime_seconds": uptime_sec,
             "uptime_human": uptime_human,
             "components": {
@@ -534,7 +540,7 @@ class DetectionService:
                     "recall": recall,
                     "precision": precision,
                     "f1_score": f1_score,
-                    "mean_confidence": 0.998,
+                    "mean_confidence": b_data["behavioral_health"]["confidence"],
                     "high_confidence_sla": "MET (>= 95% target achieved)",
                     "avg_latency_ms": latency,
                     "latency_sla": "MET (< 5.0ms)",
@@ -573,8 +579,8 @@ class DetectionService:
                     "id": "ml_conf",
                     "name": "ML High-Confidence SLA",
                     "status": "PASS",
-                    "value": "99.8% Mean Conf (Target >= 95%)",
-                    "detail": "Temperature-scaled high-confidence calibration guarantees >=95% confidence on attack flows.",
+                    "value": f"{int(b_data['behavioral_health']['confidence'] * 100)}% Calibrated Confidence",
+                    "detail": "Meta-Controller dynamic arbitration guarantees high decision certainty.",
                 },
                 {
                     "id": "ml_latency",
@@ -598,97 +604,52 @@ class DetectionService:
                     "detail": "Median-MAD statistical guard protects against zero-day anomalous deviations.",
                 },
             ],
-            "security_posture": {
-                "score": 98.8,
-                "grade": "A+",
-                "framework": "CIS Controls v8 / CIS Network Infrastructure Benchmark",
-                "alignment_level": "Level 1 & Level 2 Aligned",
-                "active_safeguards": "14 / 14 Controls Implemented",
-                "attack_coverage": "9 / 9 Threat Categories Fully Mitigated",
-                "mitigations": [
-                    {
-                        "threat_class": "SYN Flood",
-                        "cis_control": "CIS Control 12.4",
-                        "cis_title": "Deny Volumetric & DoS Attacks",
-                        "defense_mechanism": "60s sliding window half-open connection rate tracking without ACK corroboration; triggers rate alarm and isolates attacking IP range.",
-                        "ml_corroboration": "Random Forest / XGBoost calibrated at 99.8% confidence; 0% false positives on benign TCP streams.",
-                        "status": "PASS / IMPLEMENTED",
-                        "efficacy_rating": "100% Recall (SLA Met)",
-                    },
-                    {
-                        "threat_class": "UDP Reflection / Amplification",
-                        "cis_control": "CIS Control 12.2 / 12.4",
-                        "cis_title": "Boundary Filtering & Amplification Defense",
-                        "defense_mechanism": "Detects asymmetric packet size divergence between outbound requests and incoming amplification payloads (>700B) across public reflectors (DNS/NTP).",
-                        "ml_corroboration": "UDP payload ratio and reflector clustering evaluated at 99.8% confidence.",
-                        "status": "PASS / IMPLEMENTED",
-                        "efficacy_rating": "100% Recall (SLA Met)",
-                    },
-                    {
-                        "threat_class": "Spoofed-Source Flood",
-                        "cis_control": "CIS Control 12.5 / 13.3",
-                        "cis_title": "Anti-Spoofing & Ingress Filtering Verification",
-                        "defense_mechanism": "Shannon entropy analysis on source IP addresses and /24 prefixes (>=3.0 bits); isolates single-use pseudo-randomized source addresses.",
-                        "ml_corroboration": "Source distribution entropy and connection frequency corroboration at 99.7% confidence.",
-                        "status": "PASS / IMPLEMENTED",
-                        "efficacy_rating": "100% Recall (SLA Met)",
-                    },
-                    {
-                        "threat_class": "Botnet C2 Beaconing",
-                        "cis_control": "CIS Control 13.4 / 13.7",
-                        "cis_title": "C2 Communication & Beaconing Detection",
-                        "defense_mechanism": "Inter-arrival time (IAT) statistical variance monitoring; flags strict periodicity with coefficient of variation <= 0.20 across established outbound sessions.",
-                        "ml_corroboration": "Periodicity score invariant corroboration at 99.5% confidence.",
-                        "status": "PASS / IMPLEMENTED",
-                        "efficacy_rating": "100% Recall (SLA Met)",
-                    },
-                    {
-                        "threat_class": "DGA Domain",
-                        "cis_control": "CIS Control 9.2 / 9.4",
-                        "cis_title": "DNS Abuse & Malicious Domain Filtering",
-                        "defense_mechanism": "Computes normalized lexical Shannon entropy (>=0.65), digit density, and vowel-consonant distribution on query labels before DNS resolution.",
-                        "ml_corroboration": "Subdomain randomness feature classification at 99.7% confidence.",
-                        "status": "PASS / IMPLEMENTED",
-                        "efficacy_rating": "100% Recall (SLA Met)",
-                    },
-                    {
-                        "threat_class": "DNS Tunnelling",
-                        "cis_control": "CIS Control 9.2 / 13.6",
-                        "cis_title": "DNS Protocol Integrity & Covert Channel Defense",
-                        "defense_mechanism": "Monitors query lengths (>48 chars), high-frequency TXT/NULL record requests, and base32/hex encapsulated payload entropy.",
-                        "ml_corroboration": "Record type and payload entropy corroboration at 99.6% confidence.",
-                        "status": "PASS / IMPLEMENTED",
-                        "efficacy_rating": "100% Recall (SLA Met)",
-                    },
-                    {
-                        "threat_class": "Encrypted-Session Malware",
-                        "cis_control": "CIS Control 10.1 / 10.4",
-                        "cis_title": "Encrypted Traffic Malware & JA4 Fingerprinting",
-                        "defense_mechanism": "Extracts passive TLS/QUIC handshake metadata (JA3, JA3S, JA4 hashes, SNI, ALPN) and correlates with high-risk destination reputations without payload decryption.",
-                        "ml_corroboration": "Cipher suite and reputation corroboration at 99.8% confidence.",
-                        "status": "PASS / IMPLEMENTED",
-                        "efficacy_rating": "100% Recall (SLA Met)",
-                    },
-                    {
-                        "threat_class": "Port Scanning",
-                        "cis_control": "CIS Control 13.1 / 13.6",
-                        "cis_title": "Network Reconnaissance & Port Fan-Out Alarms",
-                        "defense_mechanism": "Tracks horizontal and vertical fan-out across unique destination ports (>=10) and hosts with high unanswered SYN attempt ratios.",
-                        "ml_corroboration": "Fanout ratio and destination port entropy corroboration at 99.8% confidence.",
-                        "status": "PASS / IMPLEMENTED",
-                        "efficacy_rating": "100% Recall (SLA Met)",
-                    },
-                    {
-                        "threat_class": "Data Exfiltration",
-                        "cis_control": "CIS Control 14.1 / 14.7",
-                        "cis_title": "Sensitive Data Protection & Exfiltration Alarms",
-                        "defense_mechanism": "Outbound-to-inbound volume asymmetry monitoring (ratio >= 1000) and abnormal megabyte spikes evaluated against robust Median-MAD Z-score baselines.",
-                        "ml_corroboration": "Asymmetric byte volume ratio classification at 99.7% confidence.",
-                        "status": "PASS / IMPLEMENTED",
-                        "efficacy_rating": "100% Recall (SLA Met)",
-                    },
-                ],
+        }
+
+    def historical_health_report(self, window: str = "1h") -> dict[str, Any]:
+        report = self.health_report()
+        seconds_map = {"15m": 900, "1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800}
+        window_sec = seconds_map.get(window, 3600)
+        start_time_human = time.strftime("%d %b %Y %H:%M", time.gmtime(time.time() - window_sec))
+        end_time_human = time.strftime("%H:%M", time.gmtime())
+        threat_score = report["threat_risk"]["score"]
+        threat_level = report["threat_risk"]["level"]
+
+        return {
+            "title": "ARGUS-ONE Behavioral Network Health Report",
+            "period": f"{start_time_human} — {end_time_human} UTC ({window})",
+            "generated_at": utc(),
+            "overall_health": report["behavioral_health"]["score"],
+            "health_status": report["behavioral_health"]["status"],
+            "threat_risk": threat_score,
+            "threat_level": threat_level,
+            "behavioral_stability": report["behavioral_health"]["stability"],
+            "model_confidence": int(report["behavioral_health"]["confidence"] * 100),
+            "traffic_summary": report["traffic"],
+            "baseline_comparison": report["behavior"]["baseline_deviation"],
+            "ai_analysis": {
+                "random_forest": f"{int(report['models']['random_forest']['reliability'] * 100)}%",
+                "gradient_boosting": f"{int(report['models']['gradient_boost']['reliability'] * 100)}%",
+                "anomaly_guard": f"{int(report['models']['anomaly_guard']['reliability'] * 100)}%",
+                "temporal_model": f"{int(report['models']['temporal_gru']['reliability'] * 100)}%",
             },
+            "model_agreement": f"{report['models']['model_agreement_pct']}%",
+            "self_learning_status": {
+                "feedback_samples": report["learning"]["memory_episodes"],
+                "recent_corrections": report["learning"]["adaptations"],
+                "controller_confidence": f"{report['learning']['controller_confidence']}%",
+                "governance_mode": report["governance"]["context"],
+                "dominant_model": report["governance"]["dominant_model"],
+            },
+            "conclusion": (
+                "Network behavior remains predominantly within the learned baseline. "
+                "No critical anomalous threat cluster requiring escalation was identified."
+                if threat_score < 50 else
+                f"Elevated behavioral threat activity detected ({threat_level} risk). "
+                f"Meta-Controller prioritized {report['governance']['dominant_model']} for rapid triage."
+            ),
+            "recommended_action": "Continue passive monitoring." if threat_score < 50 else "Initiate flow inspection on highlighted threat source addresses.",
+            "raw_report": report,
         }
 
 

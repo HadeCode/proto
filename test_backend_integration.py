@@ -102,6 +102,28 @@ def main():
             for detector in state["detectors"]:
                 simulate(detector["id"])
             print("PASS: repeat all-attacks run and each of nine individual scenarios")
+            health = request("/health")
+            assert "behavioral_health" in health
+            assert "threat_risk" in health
+            assert "traffic" in health
+            assert "behavior" in health
+            assert "models" in health
+            assert "governance" in health
+            assert "explanation" in health
+            assert 0 <= health["behavioral_health"]["score"] <= 100
+            assert 0 <= health["threat_risk"]["score"] <= 100
+            assert "60s" in health["behavior"]["horizons"]
+            assert "5m" in health["behavior"]["horizons"]
+            assert "30m" in health["behavior"]["horizons"]
+            print("PASS: Behavioral network health scoring & multi-horizon diagnostics")
+
+            report_1h = request("/health/report?window=1h")
+            assert "title" in report_1h
+            assert "overall_health" in report_1h
+            assert "threat_risk" in report_1h
+            assert "conclusion" in report_1h
+            assert "ai_analysis" in report_1h
+            print("PASS: Behavioral network health historical report generation")
         finally:
             if process is not None:
                 process.terminate()

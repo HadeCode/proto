@@ -21,7 +21,7 @@ def main():
                 raise SystemExit(f"Port {port} is already in use. Stop the previous server before starting both services.")
     processes = []
     try:
-        processes.append(subprocess.Popen([sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", "8000"], cwd=root / "ARGUS-ONE"))
+        processes.append(subprocess.Popen([sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", "8000", "--reload"], cwd=root / "ARGUS-ONE"))
         processes.append(subprocess.Popen([node, str(vite), "--host", "127.0.0.1", "--port", "8443"], cwd=root))
         print("Dashboard: http://127.0.0.1:8443\nOpen Dashboard > Run simulation > All nine attacks.\nCtrl+C stops both services.", flush=True)
         while all(p.poll() is None for p in processes):

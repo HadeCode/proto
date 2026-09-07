@@ -9,7 +9,7 @@ const NAV = [
     group: "OVERVIEW",
     items: [
       { label: "Dashboard", path: "/dashboard", icon: "⬡" },
-      { label: "Health Report", path: "/health-report", icon: "✚" },
+      { label: "Network Health", path: "/health-report", icon: "✚" },
     ],
   },
   {
@@ -62,7 +62,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const breadcrumb = (() => {
     const p = location.pathname;
     if (p.startsWith("/dashboard")) return "ARGUS-ONE / Overview / Dashboard";
-    if (p.startsWith("/health-report")) return "ARGUS-ONE / Overview / Health Report";
+    if (p.startsWith("/health-report") || p.startsWith("/health") || p.startsWith("/network-health")) return "ARGUS-ONE / Overview / Behavioral Network Health";
     if (p.startsWith("/live-traffic")) return "ARGUS-ONE / Monitor / Live Traffic";
     if (p.startsWith("/flow-explorer")) return "ARGUS-ONE / Monitor / Flow Explorer";
     if (p.startsWith("/threats")) return "ARGUS-ONE / Detection / Threats";

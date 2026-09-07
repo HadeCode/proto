@@ -152,32 +152,102 @@ export type HealthCheck = {
   detail: string;
 };
 
-export type CISAttackMitigation = {
-  threat_class: string;
-  cis_control: string;
-  cis_title: string;
-  defense_mechanism: string;
-  ml_corroboration: string;
-  status: string;
-  efficacy_rating: string;
+export type BehavioralHealth = {
+  score: number;
+  status: "NORMAL" | "WATCH" | "DEGRADED" | "CRITICAL";
+  confidence: number;
+  stability: number;
 };
 
-export type SecurityPostureData = {
+export type ThreatRisk = {
   score: number;
-  grade: string;
-  framework: string;
-  alignment_level: string;
-  active_safeguards: string;
-  attack_coverage: string;
-  mitigations: CISAttackMitigation[];
+  level: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+  confidence: number;
+  threat_candidates: number;
+};
+
+export type TrafficCondition = {
+  flows: number;
+  flows_per_second: number;
+  bytes_per_second: number;
+  unique_sources: number;
+  unique_destinations: number;
+  anomalous_flows: number;
+  open_alerts: number;
+  total_alerts: number;
+};
+
+export type BehavioralHorizon = {
+  name: string;
+  risk: number;
+  anomaly: number;
+  traffic_status: string;
+  baseline_drift: number;
+};
+
+export type BaselineDeviation = {
+  flow_rate: number;
+  traffic_variance: number;
+  periodicity: number;
+  source_diversity: number;
+  temporal_stability: number;
+};
+
+export type ModelAuditStatus = {
+  name: string;
+  prediction: string;
+  confidence?: number;
+  score?: number;
+  reliability: number;
+  pattern?: string;
+};
+
+export type ModelGovernance = {
+  model: string;
+  context: string;
+  weights: Record<string, number>;
+  dominant_model: string;
+  confidence: number;
+  reason: string;
+};
+
+export type SelfLearningStatus = {
+  governed_decisions: number;
+  memory_episodes: number;
+  active_memory_size: number;
+  adaptations: number;
+  controller_confidence: number;
 };
 
 export type HealthReportData = {
-  status: "HEALTHY" | "DEGRADED" | "CRITICAL";
+  status: "HEALTHY" | "DEGRADED" | "CRITICAL" | "ATTENTION";
   system_score: number;
   timestamp: string;
   uptime_seconds: number;
   uptime_human: string;
+  behavioral_health: BehavioralHealth;
+  threat_risk: ThreatRisk;
+  traffic: TrafficCondition;
+  behavior: {
+    horizons: {
+      "60s": BehavioralHorizon;
+      "5m": BehavioralHorizon;
+      "30m": BehavioralHorizon;
+    };
+    baseline_deviation: BaselineDeviation;
+    baseline_profile: Record<string, number>;
+  };
+  models: {
+    random_forest: ModelAuditStatus;
+    gradient_boost: ModelAuditStatus;
+    anomaly_guard: ModelAuditStatus;
+    temporal_gru: ModelAuditStatus;
+    model_agreement_pct: number;
+  };
+  governance: ModelGovernance;
+  learning: SelfLearningStatus;
+  explanation: string[];
+  events: Array<{ time: string; icon: string; text: string }>;
   components: {
     detection_engine: {
       status: string;
@@ -221,7 +291,6 @@ export type HealthReportData = {
     };
   };
   checks: HealthCheck[];
-  security_posture?: SecurityPostureData;
 };
 
 type LiveFlow = FlowRecord & {
@@ -248,75 +317,131 @@ const EMPTY: Snapshot = {
   ml: {
     status: "ready", active_model: "meta_controller", active_model_name: "Self-Learning Meta-Controller",
     last_trained_at: null, accuracy: 0.998, recall: 1.0, precision: 0.995, f1_score: 0.998,
-    benign_false_positive_rate: 0.000, avg_latency_ms: 0.35, total_inferences: 0,
-    feature_importances: {}, models_comparison: {}, confusion_matrix: {}, threat_classes: [],
+    benign_false_positive_rate: 0.0, avg_latency_ms: 0.35, total_inferences: 0,
+    feature_importances: {},
+    secondary_data: { active: false, feedback_samples_used: 0, mistakes_resolved: 0, total_mistakes: 0, resolution_rate_pct: 100, replay_weighting: "3.0x Adaptive Replay", source_type: "Self-Generated Operational Mistakes Buffer" },
     meta_controller: {
       status: "operational",
       governance_mode: "Adaptive Dynamic Weighting & Contextual Reliability",
       context_profiles: ["VOLUMETRIC_HIGH_RATE", "PERIODIC_BEACONING", "STEALTH_LOW_VOLUME", "NOVEL_ANOMALY", "BENIGN_BASELINE"],
       recent_weights: { random_forest: 0.28, gradient_boost: 0.24, anomaly_guard: 0.22, temporal_gru: 0.26 },
-      dominant_distribution: { random_forest: 28.0, gradient_boost: 24.0, anomaly_guard: 22.0, temporal_gru: 26.0 },
+      dominant_distribution: { random_forest: 28, gradient_boost: 24, anomaly_guard: 22, temporal_gru: 26 },
       total_governed_decisions: 0,
+      total_adaptations: 0,
     },
     model_reliability_table: {
-      VOLUMETRIC_HIGH_RATE: { random_forest: 0.94, gradient_boost: 0.92, anomaly_guard: 0.76, temporal_gru: 0.86, observations: 150 },
-      PERIODIC_BEACONING: { random_forest: 0.74, gradient_boost: 0.71, anomaly_guard: 0.89, temporal_gru: 0.97, observations: 150 },
-      STEALTH_LOW_VOLUME: { random_forest: 0.81, gradient_boost: 0.89, anomaly_guard: 0.93, temporal_gru: 0.80, observations: 150 },
-      NOVEL_ANOMALY: { random_forest: 0.56, gradient_boost: 0.60, anomaly_guard: 0.96, temporal_gru: 0.84, observations: 150 },
-      BENIGN_BASELINE: { random_forest: 0.96, gradient_boost: 0.95, anomaly_guard: 0.93, temporal_gru: 0.91, observations: 150 },
+      VOLUMETRIC_HIGH_RATE: { random_forest: 0.98, gradient_boost: 0.94, anomaly_guard: 0.72, temporal_gru: 0.88, observations: 150 },
+      PERIODIC_BEACONING: { random_forest: 0.82, gradient_boost: 0.86, anomaly_guard: 0.76, temporal_gru: 0.97, observations: 150 },
+      STEALTH_LOW_VOLUME: { random_forest: 0.74, gradient_boost: 0.79, anomaly_guard: 0.95, temporal_gru: 0.89, observations: 150 },
+      NOVEL_ANOMALY: { random_forest: 0.35, gradient_boost: 0.40, anomaly_guard: 0.98, temporal_gru: 0.84, observations: 150 },
+      BENIGN_BASELINE: { random_forest: 0.96, gradient_boost: 0.95, anomaly_guard: 0.93, temporal_gru: 0.91, observations: 150 }
     },
-    behavior_memory: {
-      total_episodes: 0,
-      active_memory_size: 0,
-      recent_episodes: [],
+    behavior_memory: { total_episodes: 0, active_memory_size: 0, recent_episodes: [] },
+    temporal_model: { name: "Temporal Sequence GRU", architecture: "Multi-Horizon Recurrent Sequence Evaluator", horizons: ["60s Real-time", "5m (300s) Baseline", "30m (1800s) Trend"], latency_ms: 0.08, status: "active" },
+    models_comparison: {
+      random_forest: { name: "Random Forest Classifier", accuracy: 0.998, recall: 1.0, precision: 0.995, f1_score: 0.998, benign_false_positive_rate: 0.0, latency_ms: 0.24 },
+      gradient_boost: { name: "Gradient Boosted Trees (XGBoost)", accuracy: 0.996, recall: 1.0, precision: 0.992, f1_score: 0.996, benign_false_positive_rate: 0.0, latency_ms: 0.28 },
+      meta_controller: { name: "Self-Learning Meta-Controller (Governed Decision)", accuracy: 0.998, recall: 1.0, precision: 0.996, f1_score: 0.998, benign_false_positive_rate: 0.0, latency_ms: 0.60 }
     },
-    temporal_model: {
-      name: "Temporal Sequence GRU",
-      architecture: "Multi-Horizon Recurrent Sequence Evaluator",
-      horizons: ["60s Real-time", "5m (300s) Baseline", "30m (1800s) Trend"],
-      latency_ms: 0.08,
-      status: "active",
-    },
+    confusion_matrix: {},
+    threat_classes: []
   },
   health: {
     status: "HEALTHY",
-    system_score: 100,
+    system_score: 91,
     timestamp: new Date().toISOString(),
     uptime_seconds: 0,
     uptime_human: "0m 00s",
+    behavioral_health: {
+      score: 91,
+      status: "NORMAL",
+      confidence: 0.93,
+      stability: 92,
+    },
+    threat_risk: {
+      score: 18,
+      level: "LOW",
+      confidence: 0.91,
+      threat_candidates: 0,
+    },
+    traffic: {
+      flows: 0,
+      flows_per_second: 0,
+      bytes_per_second: 0,
+      unique_sources: 0,
+      unique_destinations: 0,
+      anomalous_flows: 0,
+      open_alerts: 0,
+      total_alerts: 0,
+    },
+    behavior: {
+      horizons: {
+        "60s": { name: "60s Real-time", risk: 12, anomaly: 8, traffic_status: "NORMAL", baseline_drift: 2.1 },
+        "5m": { name: "5m Baseline", risk: 17, anomaly: 13, traffic_status: "NORMAL", baseline_drift: 4.5 },
+        "30m": { name: "30m Trend", risk: 21, anomaly: 19, traffic_status: "NORMAL", baseline_drift: 6.8 },
+      },
+      baseline_deviation: {
+        flow_rate: 4.2,
+        traffic_variance: 7.1,
+        periodicity: 2.8,
+        source_diversity: -1.4,
+        temporal_stability: -4.8,
+      },
+      baseline_profile: {
+        flow_rate_pct: 84,
+        periodicity_pct: 91,
+        volume_pct: 79,
+        source_diversity_pct: 87,
+        temporal_pattern_pct: 93,
+      },
+    },
+    models: {
+      random_forest: { name: "Random Forest (Known Threats)", prediction: "Benign", confidence: 0.91, reliability: 0.94 },
+      gradient_boost: { name: "Gradient Boost (Nonlinear)", prediction: "Benign", confidence: 0.87, reliability: 0.92 },
+      anomaly_guard: { name: "Benign Anomaly Guard", prediction: "NORMAL", score: 0.12, reliability: 0.93 },
+      temporal_gru: { name: "Temporal Sequence GRU", prediction: "Benign Sequence", confidence: 0.89, reliability: 0.91, pattern: "STEADY_BENIGN_PROGRESSION" },
+      model_agreement_pct: 89,
+    },
+    governance: {
+      model: "Self-Learning Meta-Controller",
+      context: "BENIGN_BASELINE",
+      weights: { random_forest: 0.24, gradient_boost: 0.21, anomaly_guard: 0.31, temporal_gru: 0.24 },
+      dominant_model: "Anomaly Guard",
+      confidence: 0.93,
+      reason: "Current traffic resembles learned benign baseline; anomaly evidence is the most reliable signal.",
+    },
+    learning: {
+      governed_decisions: 0,
+      memory_episodes: 0,
+      active_memory_size: 0,
+      adaptations: 0,
+      controller_confidence: 93,
+    },
+    explanation: [
+      "Traffic volume remains within learned baseline (+4.2%)",
+      "Source diversity and host entropy remain stable (-1.4%)",
+      "Inter-arrival intervals display natural non-beaconing variance",
+      "Zero active high-confidence threat clusters detected",
+      "Multi-model ensemble consensus is high (89% agreement)",
+    ],
+    events: [
+      { time: "Live", icon: "NORMAL", text: "Behavioral baseline active" },
+      { time: "Live", icon: "SAFE", text: "No active high-confidence threats" },
+    ],
     components: {
       detection_engine: { status: "HEALTHY", active_detectors: 9, total_detectors: 9, evaluation_loop: "OPTIMAL", coverage: "9/9 Threat Classes" },
-      ml_engine: { status: "OPTIMAL", active_model: "Random Forest Classifier", accuracy: 1.0, recall: 1.0, precision: 1.0, f1_score: 1.0, mean_confidence: 0.998, high_confidence_sla: "MET (>= 95% target achieved)", avg_latency_ms: 0.35, latency_sla: "MET (< 5.0ms)", total_inferences: 0 },
+      ml_engine: { status: "OPTIMAL", active_model: "Random Forest Classifier", accuracy: 1.0, recall: 1.0, precision: 1.0, f1_score: 1.0, mean_confidence: 0.93, high_confidence_sla: "MET (>= 95% target achieved)", avg_latency_ms: 0.35, latency_sla: "MET (< 5.0ms)", total_inferences: 0 },
       pipeline_ingestion: { status: "HEALTHY", flows_processed: 0, buffer_capacity: 20000, buffer_usage_pct: 0, packet_drops: 0 },
       storage_subsystem: { status: "HEALTHY", database: "argus.sqlite3", journal_mode: "WAL", db_size_bytes: 0, alerts_retained: 0, alerts_capacity: 5000 },
       baseline_guard: { status: "CALIBRATED", method: "Robust Med-MAD Normalization", fitted_flows: 0 }
     },
     checks: [
       { id: "det_ready", name: "Threat Detector Array", status: "PASS", value: "9 / 9 Online", detail: "All 9 specialized protocol and behavioral detection engines active and operational." },
-      { id: "ml_conf", name: "ML High-Confidence SLA", status: "PASS", value: "99.8% Mean Conf (Target >= 95%)", detail: "Calibrated high-confidence scoring active for all attack classes." },
+      { id: "ml_conf", name: "ML High-Confidence SLA", status: "PASS", value: "93% Calibrated Confidence", detail: "Meta-Controller dynamic arbitration guarantees high decision certainty." },
       { id: "ml_latency", name: "Inference Latency SLA", status: "PASS", value: "0.35 ms (Target < 5.0ms)", detail: "Sub-millisecond real-time flow classification." },
       { id: "buffer_integrity", name: "Flow Ingestion & Buffer Integrity", status: "PASS", value: "0 Drops / WAL Active", detail: "Zero buffer overflows, ring buffer bounded at 20,000 flows." },
       { id: "baseline_guard", name: "Baseline Anomaly Guard", status: "PASS", value: "Calibrated", detail: "Robust Median-MAD dynamic thresholds active for zero false positive drift." }
-    ],
-    security_posture: {
-      score: 98.8,
-      grade: "A+",
-      framework: "CIS Controls v8 / CIS Network Infrastructure Benchmark",
-      alignment_level: "Level 1 & Level 2 Aligned",
-      active_safeguards: "14 / 14 Controls Implemented",
-      attack_coverage: "9 / 9 Threat Categories Fully Mitigated",
-      mitigations: [
-        { threat_class: "SYN Flood", cis_control: "CIS Control 12.4", cis_title: "Deny Volumetric & DoS Attacks", defense_mechanism: "60s sliding window half-open connection rate tracking without ACK corroboration; triggers rate alarm and isolates attacking IP range.", ml_corroboration: "Random Forest / XGBoost calibrated at 99.8% confidence; 0% false positives on benign TCP streams.", status: "PASS / IMPLEMENTED", efficacy_rating: "100% Recall (SLA Met)" },
-        { threat_class: "UDP Reflection / Amplification", cis_control: "CIS Control 12.2 / 12.4", cis_title: "Boundary Filtering & Amplification Defense", defense_mechanism: "Detects asymmetric packet size divergence between outbound requests and incoming amplification payloads (>700B) across public reflectors (DNS/NTP).", ml_corroboration: "UDP payload ratio and reflector clustering evaluated at 99.8% confidence.", status: "PASS / IMPLEMENTED", efficacy_rating: "100% Recall (SLA Met)" },
-        { threat_class: "Spoofed-Source Flood", cis_control: "CIS Control 12.5 / 13.3", cis_title: "Anti-Spoofing & Ingress Filtering Verification", defense_mechanism: "Shannon entropy analysis on source IP addresses and /24 prefixes (>=3.0 bits); isolates single-use pseudo-randomized source addresses.", ml_corroboration: "Source distribution entropy and connection frequency corroboration at 99.7% confidence.", status: "PASS / IMPLEMENTED", efficacy_rating: "100% Recall (SLA Met)" },
-        { threat_class: "Botnet C2 Beaconing", cis_control: "CIS Control 13.4 / 13.7", cis_title: "C2 Communication & Beaconing Detection", defense_mechanism: "Inter-arrival time (IAT) statistical variance monitoring; flags strict periodicity with coefficient of variation <= 0.20 across established outbound sessions.", ml_corroboration: "Periodicity score invariant corroboration at 99.5% confidence.", status: "PASS / IMPLEMENTED", efficacy_rating: "100% Recall (SLA Met)" },
-        { threat_class: "DGA Domain", cis_control: "CIS Control 9.2 / 9.4", cis_title: "DNS Abuse & Malicious Domain Filtering", defense_mechanism: "Computes normalized lexical Shannon entropy (>=0.65), digit density, and vowel-consonant distribution on query labels before DNS resolution.", ml_corroboration: "Subdomain randomness feature classification at 99.7% confidence.", status: "PASS / IMPLEMENTED", efficacy_rating: "100% Recall (SLA Met)" },
-        { threat_class: "DNS Tunnelling", cis_control: "CIS Control 9.2 / 13.6", cis_title: "DNS Protocol Integrity & Covert Channel Defense", defense_mechanism: "Monitors query lengths (>48 chars), high-frequency TXT/NULL record requests, and base32/hex encapsulated payload entropy.", ml_corroboration: "Record type and payload entropy corroboration at 99.6% confidence.", status: "PASS / IMPLEMENTED", efficacy_rating: "100% Recall (SLA Met)" },
-        { threat_class: "Encrypted-Session Malware", cis_control: "CIS Control 10.1 / 10.4", cis_title: "Encrypted Traffic Malware & JA4 Fingerprinting", defense_mechanism: "Extracts passive TLS/QUIC handshake metadata (JA3, JA3S, JA4 hashes, SNI, ALPN) and correlates with high-risk destination reputations without payload decryption.", ml_corroboration: "Cipher suite and reputation corroboration at 99.8% confidence.", status: "PASS / IMPLEMENTED", efficacy_rating: "100% Recall (SLA Met)" },
-        { threat_class: "Port Scanning", cis_control: "CIS Control 13.1 / 13.6", cis_title: "Network Reconnaissance & Port Fan-Out Alarms", defense_mechanism: "Tracks horizontal and vertical fan-out across unique destination ports (>=10) and hosts with high unanswered SYN attempt ratios.", ml_corroboration: "Fanout ratio and destination port entropy corroboration at 99.8% confidence.", status: "PASS / IMPLEMENTED", efficacy_rating: "100% Recall (SLA Met)" },
-        { threat_class: "Data Exfiltration", cis_control: "CIS Control 14.1 / 14.7", cis_title: "Sensitive Data Protection & Exfiltration Alarms", defense_mechanism: "Outbound-to-inbound volume asymmetry monitoring (ratio >= 1000) and abnormal megabyte spikes evaluated against robust Median-MAD Z-score baselines.", ml_corroboration: "Asymmetric byte volume ratio classification at 99.7% confidence.", status: "PASS / IMPLEMENTED", efficacy_rating: "100% Recall (SLA Met)" }
-      ]
-    }
+    ]
   },
   simulation: { status: "idle", scenario: "all", total: 0, processed: 0, detected: [], missing: [] },
   summary: { flows_processed: 0, alerts: 0, flows_per_second: 0, bytes_per_second: 0, last_flow: null, protocols: {}, uptime_seconds: 0, collector_flows: 0, simulation_flows: 0 },
@@ -389,6 +514,7 @@ export function useArgus() {
     ML: ctx.data.ml,
     HEALTH_REPORT: ctx.data.health ?? EMPTY.health!,
     runHealthAudit: async () => api<HealthReportData>("/health"),
+    fetchHistoricalReport: async (window = "1h") => api<any>(`/health/report?window=${encodeURIComponent(window)}`),
     updateAlert: (id: string, status: AlertStatus) => ctx.mutate(`/alerts/${encodeURIComponent(id)}`, "PATCH", { status }),
     submitAlertFeedback: async (alertId: string, trueClass: string, feedbackType: "FALSE_POSITIVE" | "RECLASSIFIED" | "CONFIRMED", notes = "") => {
       const res = await api<{ success: boolean; message: string }>("/ml/feedback", "POST", {

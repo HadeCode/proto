@@ -63,6 +63,11 @@ def health():
     return service.health_report()
 
 
+@app.get("/api/health/report")
+def health_historical_report(window: str = "1h"):
+    return service.historical_health_report(window=window)
+
+
 @app.get("/api/state")
 def state():
     return service.snapshot()

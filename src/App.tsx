@@ -27,6 +27,8 @@ function AppShell() {
       <Routes>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/health-report" element={<HealthReportPage />} />
+        <Route path="/health" element={<HealthReportPage />} />
+        <Route path="/network-health" element={<HealthReportPage />} />
         <Route path="/live-traffic" element={<LiveTraffic />} />
         <Route path="/flow-explorer" element={<FlowExplorer />} />
         <Route path="/threats" element={<Threats />} />
