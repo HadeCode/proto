@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useArgus } from "@/data/api";
-import type { MLPredictResult, ModelReliabilityEntry } from "@/data/api";
+import type { MLPredictResult, ModelReliabilityEntry, CandidateValidationResult } from "@/data/api";
 import { Card, ElevatedCard, PageHeader, Button, MetricCard } from "@/components/ui";
 
 const PRESET_FLOWS = [
@@ -187,13 +187,32 @@ const DEFAULT_RELIABILITY_TABLE: Record<string, ModelReliabilityEntry> = {
 };
 
 export default function MachineLearning() {
-  const { ML, switchMLModel, trainML, retrainSelf, predictML, busy } = useArgus();
+  const {
+    ML,
+    switchMLModel,
+    trainML,
+    retrainSelf,
+    predictML,
+    busy,
+    rollbackModel,
+    activateModelVersion,
+    trainCandidateModel,
+    MODEL_LIFECYCLE,
+    SENSOR,
+  } = useArgus();
   const [selectedPreset, setSelectedPreset] = useState(0);
   const [customFlowJson, setCustomFlowJson] = useState(JSON.stringify(PRESET_FLOWS[0].data, null, 2));
   const [predictResult, setPredictResult] = useState<MLPredictResult | null>(null);
   const [predictError, setPredictError] = useState("");
   const [isPredicting, setIsPredicting] = useState(false);
   const [trainStatus, setTrainStatus] = useState("");
+
+  const [candidateResult, setCandidateResult] = useState<CandidateValidationResult | null>(null);
+  const [candidateLoading, setCandidateLoading] = useState(false);
+  const [lifecycleMessage, setLifecycleMessage] = useState<string>("");
+  const [actionLoading, setActionLoading] = useState(false);
+  const [selectedRollbackModel, setSelectedRollbackModel] = useState<string>("random_forest");
+  const [selectedRollbackVersion, setSelectedRollbackVersion] = useState<string>("1.0.0");
 
   const secData = ML?.secondary_data;
   const feedbackSummary = ML?.feedback_summary;
@@ -254,6 +273,48 @@ export default function MachineLearning() {
       setTimeout(() => setTrainStatus(""), 4000);
     } catch (err) {
       setTrainStatus(`Training failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const handleTrainCandidate = async () => {
+    setCandidateLoading(true);
+    setLifecycleMessage("");
+    try {
+      const res = await trainCandidateModel(14);
+      setCandidateResult(res);
+      setLifecycleMessage(res.message);
+    } catch (err) {
+      setLifecycleMessage(`Candidate evaluation failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setCandidateLoading(false);
+    }
+  };
+
+  const handleActivateCandidate = async () => {
+    if (!candidateResult) return;
+    setActionLoading(true);
+    setLifecycleMessage("");
+    try {
+      const res = await activateModelVersion("random_forest", candidateResult.candidate_version);
+      setLifecycleMessage(res.message);
+      setCandidateResult(null);
+    } catch (err) {
+      setLifecycleMessage(`Activation failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleExecuteRollback = async () => {
+    setActionLoading(true);
+    setLifecycleMessage("");
+    try {
+      const res = await rollbackModel(selectedRollbackModel, selectedRollbackVersion);
+      setLifecycleMessage(res.message);
+    } catch (err) {
+      setLifecycleMessage(`Rollback failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -615,6 +676,208 @@ export default function MachineLearning() {
         </div>
       </Card>
 
+      {/* Model Lifecycle Governance, Candidate Validation & Safe Rollback */}
+      <Card className="p-6 border border-[#4C9AFF]/40 bg-gradient-to-br from-[#09101A] via-[#0E1624] to-[#0A0E17] shadow-xl space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#242B35] pb-4">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-[#4C9AFF]/15 border border-[#4C9AFF]/35 flex items-center justify-center text-[#4C9AFF] text-xl font-bold shadow-inner mt-0.5">
+              🏛
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h2 className="text-[16px] font-bold text-[#F3F5F7] tracking-tight">
+                  Model Lifecycle Governance & Safe Rollback
+                </h2>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#4C9AFF]/15 text-[#4C9AFF] border border-[#4C9AFF]/30">
+                  {SENSOR?.sensor_id || "ARGUS-SENSOR-001"}
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#20D3A2]/15 text-[#20D3A2] border border-[#20D3A2]/30">
+                  PERSISTENT ARTIFACTS ACTIVE
+                </span>
+              </div>
+              <p className="text-[12px] text-[#9AA4B2] mt-0.5 max-w-3xl">
+                Models are persisted immutably in <code>models/</code> with structured manifests. Evaluated through automated validation gating against active benchmarks with 1-click safe rollback.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start lg:self-center shrink-0 flex-wrap">
+            <Button
+              variant="accent"
+              disabled={candidateLoading || busy}
+              onClick={handleTrainCandidate}
+              className="text-[12px] font-semibold flex items-center gap-1.5 shadow-lg shadow-[#4C9AFF]/20 bg-[#4C9AFF]/20 text-[#4C9AFF] border border-[#4C9AFF]/40 hover:bg-[#4C9AFF]/30 cursor-pointer"
+            >
+              <span>🧪</span> {candidateLoading ? "Evaluating Validation Gate..." : "Train & Gate Candidate Model"}
+            </Button>
+          </div>
+        </div>
+
+        {lifecycleMessage && (
+          <div className="p-3 rounded bg-[#4C9AFF]/10 border border-[#4C9AFF]/30 text-[#4C9AFF] text-sm flex items-center justify-between">
+            <span>{lifecycleMessage}</span>
+          </div>
+        )}
+
+        {/* 4 Governed Models Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-[12px]">
+          <div className="p-3.5 rounded-lg bg-[#0D1219] border border-[#242B35] space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-[#F3F5F7]">Random Forest</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[#20D3A2]/15 text-[#20D3A2]">
+                v{SENSOR?.active_model_versions?.random_forest || "1.0.0"} APPROVED
+              </span>
+            </div>
+            <div className="space-y-1 font-mono text-[11px] text-[#9AA4B2]">
+              <div className="flex justify-between"><span>Accuracy:</span><span className="text-[#20D3A2]">{(rfModel.accuracy * 100).toFixed(1)}%</span></div>
+              <div className="flex justify-between"><span>Recall:</span><span className="text-[#20D3A2]">{(rfModel.recall * 100).toFixed(1)}%</span></div>
+              <div className="flex justify-between"><span>FPR:</span><span className="text-[#F3F5F7]">{(rfModel.benign_false_positive_rate * 100).toFixed(2)}%</span></div>
+              <div className="flex justify-between"><span>Latency:</span><span className="text-[#4C9AFF]">{rfModel.latency_ms} ms</span></div>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-lg bg-[#0D1219] border border-[#242B35] space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-[#F3F5F7]">Gradient Boost</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[#20D3A2]/15 text-[#20D3A2]">
+                v{SENSOR?.active_model_versions?.gradient_boost || "1.0.0"} APPROVED
+              </span>
+            </div>
+            <div className="space-y-1 font-mono text-[11px] text-[#9AA4B2]">
+              <div className="flex justify-between"><span>Accuracy:</span><span className="text-[#20D3A2]">{(gbModel.accuracy * 100).toFixed(1)}%</span></div>
+              <div className="flex justify-between"><span>Recall:</span><span className="text-[#20D3A2]">{(gbModel.recall * 100).toFixed(1)}%</span></div>
+              <div className="flex justify-between"><span>FPR:</span><span className="text-[#F3F5F7]">{(gbModel.benign_false_positive_rate * 100).toFixed(2)}%</span></div>
+              <div className="flex justify-between"><span>Latency:</span><span className="text-[#4C9AFF]">{gbModel.latency_ms} ms</span></div>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-lg bg-[#0D1219] border border-[#242B35] space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-[#F3F5F7]">Anomaly Guard</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[#20D3A2]/15 text-[#20D3A2]">
+                v{SENSOR?.active_model_versions?.anomaly_guard || "1.0.0"} APPROVED
+              </span>
+            </div>
+            <div className="space-y-1 font-mono text-[11px] text-[#9AA4B2]">
+              <div className="flex justify-between"><span>Method:</span><span className="text-[#F3F5F7]">Median-MAD</span></div>
+              <div className="flex justify-between"><span>Gate Threshold:</span><span className="text-[#20D3A2]">0.45 Sigma</span></div>
+              <div className="flex justify-between"><span>Outlier Detection:</span><span className="text-[#20D3A2]">Active</span></div>
+              <div className="flex justify-between"><span>Artifact:</span><span className="text-[#4C9AFF]">baseline.json</span></div>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-lg bg-[#0D1219] border border-[#242B35] space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-[#F3F5F7]">Temporal GRU</span>
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[#20D3A2]/15 text-[#20D3A2]">
+                v{SENSOR?.active_model_versions?.temporal_gru || "1.0.0"} APPROVED
+              </span>
+            </div>
+            <div className="space-y-1 font-mono text-[11px] text-[#9AA4B2]">
+              <div className="flex justify-between"><span>Architecture:</span><span className="text-[#F3F5F7]">NumPy GRU</span></div>
+              <div className="flex justify-between"><span>Sequence:</span><span className="text-[#20D3A2]">12 Flows</span></div>
+              <div className="flex justify-between"><span>Horizons:</span><span className="text-[#20D3A2]">60s/5m/30m</span></div>
+              <div className="flex justify-between"><span>Artifact:</span><span className="text-[#4C9AFF]">model.json</span></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Candidate Model Gate Validation Report (if generated) */}
+        {candidateResult && (
+          <div className="p-4 rounded-lg bg-[#0B1320] border border-[#4C9AFF]/50 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#1E2530] pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-[#F3F5F7] text-[14px]">
+                  Candidate Validation Gate: Version {candidateResult.candidate_version}
+                </span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
+                  candidateResult.validation_gate.passed
+                    ? "bg-[#20D3A2]/20 text-[#20D3A2] border border-[#20D3A2]/40"
+                    : "bg-[#EB5757]/20 text-[#EB5757] border border-[#EB5757]/40"
+                }`}>
+                  {candidateResult.validation_gate.passed ? "PASSED VALIDATION GATE" : "REJECTED (REGRESSION)"}
+                </span>
+              </div>
+              {candidateResult.validation_gate.passed && (
+                <Button
+                  variant="accent"
+                  disabled={actionLoading}
+                  onClick={handleActivateCandidate}
+                  className="text-[12px] font-semibold bg-[#20D3A2]/20 text-[#20D3A2] border border-[#20D3A2]/40 hover:bg-[#20D3A2]/30 cursor-pointer"
+                >
+                  🚀 Promote Candidate {candidateResult.candidate_version} to Active Production
+                </Button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[12px]">
+              {Object.entries(candidateResult.validation_gate.checks).map(([chkKey, chk]) => (
+                <div key={chkKey} className="p-2.5 rounded bg-[#070B10] border border-[#1E2530] space-y-1">
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono text-[#9AA4B2] uppercase text-[10px]">{chkKey.replace(/_/g, " ")}</span>
+                    <span className={`font-mono text-[10px] font-bold ${chk.passed ? "text-[#20D3A2]" : "text-[#EB5757]"}`}>
+                      {chk.passed ? "PASS" : "FAIL"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[11px] font-mono">
+                    <span className="text-[#66707D]">Active vs Cand:</span>
+                    <span className="text-[#F3F5F7]">{chk.active} → {chk.candidate}</span>
+                  </div>
+                  {chk.rule && (
+                    <div className="text-[10px] font-mono text-[#66707D]">Rule: {chk.rule}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {candidateResult.validation_gate.reasons.length > 0 && (
+              <div className="text-[11px] text-[#9AA4B2] space-y-1">
+                {candidateResult.validation_gate.reasons.map((r, i) => (
+                  <div key={i} className="flex items-center gap-1.5 text-[#20D3A2]">
+                    <span>✓</span> <span>{r}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 1-Click Rollback Controls */}
+        <div className="pt-2 border-t border-[#1E2530] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[12px]">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[#66707D] font-medium">Safe Rollback Control:</span>
+            <select
+              value={selectedRollbackModel}
+              onChange={(e) => setSelectedRollbackModel(e.target.value)}
+              className="bg-[#0D1219] border border-[#242B35] rounded px-2.5 py-1 text-[11px] font-mono text-[#F3F5F7] focus:outline-none focus:border-[#4C9AFF]"
+            >
+              <option value="random_forest">Random Forest</option>
+              <option value="gradient_boost">Gradient Boost</option>
+              <option value="anomaly_guard">Anomaly Guard</option>
+              <option value="temporal_gru">Temporal GRU</option>
+            </select>
+            <span className="text-[#66707D]">Target Version:</span>
+            <input
+              type="text"
+              value={selectedRollbackVersion}
+              onChange={(e) => setSelectedRollbackVersion(e.target.value)}
+              className="w-20 bg-[#0D1219] border border-[#242B35] rounded px-2 py-1 text-[11px] font-mono text-[#F3F5F7] focus:outline-none focus:border-[#4C9AFF]"
+              placeholder="1.0.0"
+            />
+            <button
+              disabled={actionLoading}
+              onClick={handleExecuteRollback}
+              className="px-3 py-1 rounded bg-[#EB5757]/15 border border-[#EB5757]/40 text-[#EB5757] hover:bg-[#EB5757]/25 text-[11px] font-semibold font-mono transition-colors cursor-pointer"
+            >
+              ↺ 1-Click Safe Rollback
+            </button>
+          </div>
+          <span className="text-[11px] font-mono text-[#66707D]">
+            Rollbacks restore previously approved pointer immutably without deleting history
+          </span>
+        </div>
+      </Card>
+
       {/* Continuous Self-Learning Loop: Behavior Memory & Mistake Replay */}
       <Card className="p-5 border border-[#4C9AFF]/40 bg-gradient-to-r from-[#0D1522] via-[#101927] to-[#0D1522] shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#242B35] pb-4">
@@ -634,9 +897,12 @@ export default function MachineLearning() {
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#4C9AFF]/15 text-[#4C9AFF] border border-[#4C9AFF]/30">
                   3.0x REPLAY BOOST
                 </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#20D3A2]/15 text-[#20D3A2] border border-[#20D3A2]/30">
+                  FEEDBACK SECURITY: {ML?.feedback_security?.accepted ?? feedbackSummary?.accepted_samples ?? feedbackSummary?.total_samples ?? 0} ACCEPTED / {ML?.feedback_security?.rejected ?? feedbackSummary?.rejected_samples ?? 0} BLOCKED
+                </span>
               </div>
               <p className="text-[12px] text-[#9AA4B2] mt-1 max-w-4xl leading-relaxed">
-                ARGUS-ONE employs a two-tier self-learning loop: (1) <strong>Immediate Online Adaptation</strong> instantly adjusts the Meta-Controller’s Model Reliability Table in real time upon analyst feedback without retraining, while (2) <strong>Secondary Mistake Replay</strong> archives feedback in Behavior Memory to receive 3.0x sample weighting during scheduled offline batch retraining.
+                ARGUS-ONE employs a two-tier self-learning loop: (1) <strong>Immediate Online Adaptation</strong> instantly adjusts the Meta-Controller’s Model Reliability Table in real time upon analyst feedback without retraining, while (2) <strong>Secondary Mistake Replay</strong> archives feedback in Behavior Memory to receive 3.0x sample weighting during scheduled offline batch retraining. Feedback is validated to prevent poisoning.
               </p>
             </div>
           </div>
@@ -711,7 +977,7 @@ export default function MachineLearning() {
         {recentMistakes.length > 0 && (
           <div className="mt-4 space-y-2">
             <div className="text-[12px] font-semibold text-[#F3F5F7] flex items-center justify-between">
-              <span>Operational Feedback Episodes Learned:</span>
+              <span>Operational Feedback Episodes & Validation Audit:</span>
               <span className="text-[10px] font-mono text-[#66707D]">Showing latest {recentMistakes.length} entries</span>
             </div>
             <div className="overflow-x-auto rounded-lg border border-[#1E2530] bg-[#090D13]">
@@ -719,11 +985,12 @@ export default function MachineLearning() {
                 <thead>
                   <tr className="border-b border-[#1E2530] bg-[#070A0F] text-[#66707D] font-mono uppercase text-[10px]">
                     <th className="py-2 px-3 text-left">Time</th>
+                    <th className="py-2 px-3 text-left">Sensor / Ver</th>
                     <th className="py-2 px-3 text-left">Source IP</th>
                     <th className="py-2 px-3 text-left">Original Prediction</th>
-                    <th className="py-2 px-3 text-left">Ground Truth (Learned)</th>
+                    <th className="py-2 px-3 text-left">Ground Truth</th>
                     <th className="py-2 px-3 text-left">Feedback Type</th>
-                    <th className="py-2 px-3 text-right">Retrain Cycles</th>
+                    <th className="py-2 px-3 text-center">Validation Security</th>
                     <th className="py-2 px-3 text-center">Status</th>
                   </tr>
                 </thead>
@@ -732,6 +999,9 @@ export default function MachineLearning() {
                     <tr key={m.id} className="hover:bg-[#0E141E] transition-colors">
                       <td className="py-2 px-3 font-mono text-[#9AA4B2] text-[11px] whitespace-nowrap">
                         {m.timestamp ? new Date(m.timestamp).toLocaleTimeString() : "-"}
+                      </td>
+                      <td className="py-2 px-3 font-mono text-[10px] text-[#66707D]">
+                        {m.sensor_id || "SENSOR-001"} • v{m.model_version || "1.0.0"}
                       </td>
                       <td className="py-2 px-3 font-mono text-[#F3F5F7]">{m.source_ip}</td>
                       <td className="py-2 px-3 text-[#EB5757] font-mono text-[11px]">
@@ -745,8 +1015,17 @@ export default function MachineLearning() {
                           {m.feedback_type}
                         </span>
                       </td>
-                      <td className="py-2 px-3 text-right font-mono text-[#F3F5F7]">
-                        {m.retrained_count} cycles
+                      <td className="py-2 px-3 text-center">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                            m.validation_status === "REJECTED"
+                              ? "bg-[#EB5757]/15 text-[#EB5757] border-[#EB5757]/30"
+                              : "bg-[#20D3A2]/15 text-[#20D3A2] border-[#20D3A2]/30"
+                          }`}
+                          title={m.validator_reason || "Passed protocol invariants"}
+                        >
+                          {m.validation_status || "ACCEPTED"}
+                        </span>
                       </td>
                       <td className="py-2 px-3 text-center">
                         <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#20D3A2]/15 text-[#20D3A2]">

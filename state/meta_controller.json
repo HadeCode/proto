@@ -1,0 +1,101 @@
+{
+  "controller_version": "1.1.0",
+  "sensor_id": "ARGUS-SENSOR-001",
+  "last_updated": "2026-09-08T16:08:10.523245+00:00",
+  "total_governed_decisions": 211,
+  "total_learned": 1,
+  "governance_mode": "Adaptive Dynamic Weighting & Contextual Reliability",
+  "model_reliability_table": {
+    "VOLUMETRIC_HIGH_RATE": {
+      "random_forest": 0.9448,
+      "gradient_boost": 0.9264,
+      "anomaly_guard": 0.7792,
+      "temporal_gru": 0.7568,
+      "observations": 151
+    },
+    "PERIODIC_BEACONING": {
+      "random_forest": 0.74,
+      "gradient_boost": 0.71,
+      "anomaly_guard": 0.89,
+      "temporal_gru": 0.97,
+      "observations": 150
+    },
+    "STEALTH_LOW_VOLUME": {
+      "random_forest": 0.81,
+      "gradient_boost": 0.89,
+      "anomaly_guard": 0.93,
+      "temporal_gru": 0.8,
+      "observations": 150
+    },
+    "NOVEL_ANOMALY": {
+      "random_forest": 0.56,
+      "gradient_boost": 0.6,
+      "anomaly_guard": 0.96,
+      "temporal_gru": 0.84,
+      "observations": 150
+    },
+    "BENIGN_BASELINE": {
+      "random_forest": 0.96,
+      "gradient_boost": 0.95,
+      "anomaly_guard": 0.93,
+      "temporal_gru": 0.91,
+      "observations": 150
+    }
+  },
+  "recent_weights": [
+    {
+      "random_forest": 0.0507,
+      "gradient_boost": 0.1413,
+      "anomaly_guard": 0.3586,
+      "temporal_gru": 0.4494
+    },
+    {
+      "random_forest": 0.0507,
+      "gradient_boost": 0.1413,
+      "anomaly_guard": 0.3586,
+      "temporal_gru": 0.4494
+    },
+    {
+      "random_forest": 0.0507,
+      "gradient_boost": 0.1413,
+      "anomaly_guard": 0.3586,
+      "temporal_gru": 0.4494
+    },
+    {
+      "random_forest": 0.0507,
+      "gradient_boost": 0.1413,
+      "anomaly_guard": 0.3586,
+      "temporal_gru": 0.4494
+    },
+    {
+      "random_forest": 0.0455,
+      "gradient_boost": 0.1421,
+      "anomaly_guard": 0.3606,
+      "temporal_gru": 0.4519
+    },
+    {
+      "random_forest": 0.1337,
+      "gradient_boost": 0.2112,
+      "anomaly_guard": 0.304,
+      "temporal_gru": 0.3511
+    },
+    {
+      "random_forest": 0.0507,
+      "gradient_boost": 0.1413,
+      "anomaly_guard": 0.3586,
+      "temporal_gru": 0.4494
+    },
+    {
+      "random_forest": 0.1217,
+      "gradient_boost": 0.2815,
+      "anomaly_guard": 0.3137,
+      "temporal_gru": 0.283
+    },
+    {
+      "random_forest": 0.1943,
+      "gradient_boost": 0.1937,
+      "anomaly_guard": 0.3243,
+      "temporal_gru": 0.2877
+    }
+  ]
+}

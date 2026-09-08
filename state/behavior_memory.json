@@ -1,0 +1,27 @@
+{
+  "total_episodes": 1,
+  "active_memory_size": 1,
+  "episodes": [
+    {
+      "episode_id": "EP-1788880502131",
+      "timestamp": 1788880502.1311834,
+      "context_profile": "VOLUMETRIC_HIGH_RATE",
+      "predicted_class": "Unknown",
+      "true_class": "SYN Flood",
+      "feedback_type": "CONFIRMED",
+      "model_predictions": {
+        "random_forest": "SYN Flood",
+        "gradient_boost": "SYN Flood",
+        "anomaly_guard": "Attack",
+        "temporal_gru": "Spoofed-Source Flood"
+      },
+      "reliability_shift": {
+        "random_forest": 0.0048,
+        "gradient_boost": 0.0064,
+        "anomaly_guard": 0.0192,
+        "temporal_gru": -0.1032
+      },
+      "notes": "Confirmed SYN flood attack pattern"
+    }
+  ]
+}

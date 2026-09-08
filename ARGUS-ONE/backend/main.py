@@ -183,6 +183,46 @@ def dataset_preview():
     return service.dataset_preview()
 
 
+@app.get("/api/sensor")
+def sensor_info():
+    return service.sensor_info()
+
+
+@app.get("/api/ml/models")
+def model_registry():
+    return service.get_model_registry()
+
+
+class MLRollbackRequest(BaseModel):
+    model_name: str
+    target_version: str
+
+
+@app.post("/api/ml/models/rollback")
+def rollback_model(req: MLRollbackRequest):
+    return call(service.rollback_model, req.model_name, req.target_version)
+
+
+class MLActivateRequest(BaseModel):
+    model_name: str
+    version: str
+
+
+@app.post("/api/ml/models/activate")
+def activate_model(req: MLActivateRequest):
+    return call(service.activate_model_version, req.model_name, req.version)
+
+
+class MLCandidateTrainRequest(BaseModel):
+    runs_per_class: int = 14
+
+
+@app.post("/api/ml/candidate/train")
+def train_candidate(req: MLCandidateTrainRequest | None = None):
+    runs = req.runs_per_class if req else 14
+    return call(service.train_candidate_model, runs)
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

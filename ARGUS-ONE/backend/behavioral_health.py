@@ -208,105 +208,147 @@ class BehavioralHealthEngine:
         # 60s: reflects immediate burst dynamics and current flow rate acceleration
         burst_60s = features.get("horizon_burst_60s", 1.0)
         h60_risk = int(round(min(100.0, (anomaly_score * 35.0) + (15.0 if open_alert_count > 0 else 5.0) + (burst_60s - 1.0) * 12.0)))
-        h60_risk = max(5, h60_risk)
-        h60_anomaly = int(round(min(100.0, anomaly_score * 80.0)))
+        h60_risk = max(5, h60_risk) if flow_count > 0 else 0
+        h60_anomaly = int(round(min(100.0, anomaly_score * 80.0))) if flow_count > 0 else 0
 
         # 5m: reflects baseline deviation and persistent anomalous sequences
         h5m_risk = int(round(min(100.0, (anomaly_score * 45.0) + (t_threat_prob * 35.0) + (12.0 if open_alert_count > 0 else 4.0))))
-        h5m_risk = max(8, h5m_risk)
-        h5m_anomaly = int(round(min(100.0, (anomaly_score * 75.0) + (abs(dev_periodicity) * 0.4))))
+        h5m_risk = max(8, h5m_risk) if flow_count > 0 else 0
+        h5m_anomaly = int(round(min(100.0, (anomaly_score * 75.0) + (abs(dev_periodicity) * 0.4)))) if flow_count > 0 else 0
 
         # 30m: reflects cumulative trend, C2 beaconing stability, or exfiltration drift
         h30m_risk = int(round(min(100.0, (t_threat_prob * 55.0) + (anomaly_score * 30.0) + (20.0 if open_alert_count > 1 else 6.0))))
-        h30m_risk = max(10, h30m_risk)
-        h30m_anomaly = int(round(min(100.0, (anomaly_score * 70.0) + (abs(dev_flow_rate) * 0.3))))
+        h30m_risk = max(10, h30m_risk) if flow_count > 0 else 0
+        h30m_anomaly = int(round(min(100.0, (anomaly_score * 70.0) + (abs(dev_flow_rate) * 0.3)))) if flow_count > 0 else 0
+
+        sensor_id = getattr(service, "sensor_id", "ARGUS-SENSOR-001")
+        active_model_versions = {}
+        if hasattr(service, "sensor_info"):
+            try:
+                active_model_versions = service.sensor_info().get("active_model_versions", {})
+            except Exception:
+                pass
+        if not active_model_versions and ml_engine and hasattr(ml_engine, "registry_manager"):
+            for m in ("random_forest", "gradient_boost", "anomaly_guard", "temporal_gru"):
+                active_model_versions[m] = ml_engine.registry_manager.get_active_version(m) or "1.0.0"
 
         # 7. Two Core Distinct Scores: Network Health vs Threat Risk
-        # 7a. Network Health Score (Answers: "How normal and stable is observed traffic?")
-        health_penalty = (anomaly_score * 45.0) + (abs(dev_flow_rate) * 0.15) + (abs(dev_periodicity) * 0.15)
-        if open_alert_count > 0:
-            health_penalty += min(20.0, open_alert_count * 5.0)
-        health_score = int(round(max(20, min(100, 100 - health_penalty))))
-
-        if health_score >= 85:
-            health_status = "NORMAL"
-        elif health_score >= 65:
-            health_status = "WATCH"
-        elif health_score >= 45:
-            health_status = "DEGRADED"
+        now_time = datetime.now(timezone.utc)
+        if flow_count == 0:
+            health_score = 0
+            health_status = "INSUFFICIENT_DATA"
+            threat_score = 0
+            threat_level = "INSUFFICIENT_DATA"
+            system_status = "INSUFFICIENT_DATA"
+            explanations = [
+                "Awaiting live flow telemetry on passive interface (0 flows observed in current window)",
+                "Baseline ready; real-time behavioral metrics and drift calibrate upon flow ingestion",
+                "Passive metadata inspection armed; multi-model classifiers ready for incoming traffic",
+            ]
+            events = [
+                {
+                    "time": now_time.strftime("%H:%M"),
+                    "icon": "NORMAL",
+                    "text": f"Sensor node {sensor_id} online in passive metadata tap mode",
+                },
+                {
+                    "time": now_time.strftime("%H:%M"),
+                    "icon": "SAFE",
+                    "text": "Waiting for live flow telemetry (0 packets/flows observed)",
+                },
+                {
+                    "time": now_time.strftime("%H:%M"),
+                    "icon": "GOVERNANCE",
+                    "text": "Meta-Controller online with persistent state; models ready",
+                },
+            ]
         else:
-            health_status = "CRITICAL"
+            # 7a. Network Health Score (Answers: "How normal and stable is observed traffic?")
+            health_penalty = (anomaly_score * 45.0) + (abs(dev_flow_rate) * 0.15) + (abs(dev_periodicity) * 0.15)
+            if open_alert_count > 0:
+                health_penalty += min(20.0, open_alert_count * 5.0)
+            health_score = int(round(max(20, min(100, 100 - health_penalty))))
 
-        # 7b. Threat Risk Score (Answers: "How likely is there to be malicious activity?")
-        threat_mass = (1.0 - rf_conf if rf_pred == "Benign" else rf_conf) * 0.35 + \
-                      (1.0 - gb_conf if gb_pred == "Benign" else gb_conf) * 0.35 + \
-                      (t_threat_prob * 0.30)
-        if final_class != "Benign":
-            threat_mass = max(threat_mass, final_conf)
+            if health_score >= 85:
+                health_status = "NORMAL"
+            elif health_score >= 65:
+                health_status = "WATCH"
+            elif health_score >= 45:
+                health_status = "DEGRADED"
+            else:
+                health_status = "CRITICAL"
 
-        threat_score = int(round(min(100, max(5, (threat_mass * 75.0) + (open_alert_count * 8.0)))))
-        if threat_score < 25:
-            threat_level = "LOW"
-        elif threat_score < 55:
-            threat_level = "MODERATE"
-        elif threat_score < 80:
-            threat_level = "HIGH"
-        else:
-            threat_level = "CRITICAL"
+            # 7b. Threat Risk Score (Answers: "How likely is there to be malicious activity?")
+            threat_mass = (1.0 - rf_conf if rf_pred == "Benign" else rf_conf) * 0.35 + \
+                          (1.0 - gb_conf if gb_pred == "Benign" else gb_conf) * 0.35 + \
+                          (t_threat_prob * 0.30)
+            if final_class != "Benign":
+                threat_mass = max(threat_mass, final_conf)
+
+            threat_score = int(round(min(100, max(5, (threat_mass * 75.0) + (open_alert_count * 8.0)))))
+            if threat_score < 25:
+                threat_level = "LOW"
+            elif threat_score < 55:
+                threat_level = "MODERATE"
+            elif threat_score < 80:
+                threat_level = "HIGH"
+            else:
+                threat_level = "CRITICAL"
+
+            system_status = "HEALTHY" if health_score >= 65 else "ATTENTION"
+
+            # 8. Dynamic "WHY?" Explanations
+            explanations = []
+            if abs(dev_flow_rate) <= 15.0:
+                explanations.append(f"Traffic volume remains within learned baseline ({dev_flow_rate:+.1f}%)")
+            else:
+                explanations.append(f"Traffic volume deviates {dev_flow_rate:+.1f}% from learned baseline")
+
+            if abs(dev_source_div) <= 10.0:
+                explanations.append("Source diversity and host entropy remain stable")
+            else:
+                explanations.append(f"Source diversity shift detected ({dev_source_div:+.1f}%)")
+
+            if dev_periodicity > 8.0:
+                explanations.append(f"Periodic behavior elevated (+{dev_periodicity:.1f}%), monitored by Temporal GRU")
+            else:
+                explanations.append("Inter-arrival intervals display natural non-beaconing variance")
+
+            if open_alert_count == 0 and final_class == "Benign":
+                explanations.append("Zero active high-confidence threat clusters detected")
+            else:
+                explanations.append(f"{open_alert_count} active alert(s) under review; Top signal: '{final_class}'")
+
+            if model_agreement_pct >= 80:
+                explanations.append(f"Multi-model ensemble consensus is high ({model_agreement_pct}% agreement)")
+            else:
+                explanations.append(f"Model disagreement observed ({model_agreement_pct}% consensus); Meta-Controller arbitrating")
+
+            # 9. Dynamic Health Events Timeline
+            events = [
+                {
+                    "time": now_time.strftime("%H:%M"),
+                    "icon": "NORMAL",
+                    "text": f"Behavioral baseline active ({baseline_info.get('flows', 0):,} reference flows)",
+                },
+                {
+                    "time": now_time.strftime("%H:%M"),
+                    "icon": "SAFE" if open_alert_count == 0 else "ALERT",
+                    "text": "No active high-confidence threats" if open_alert_count == 0 else f"{open_alert_count} alert(s) flagged",
+                },
+                {
+                    "time": now_time.strftime("%H:%M"),
+                    "icon": "ANOMALY" if anomaly_score >= 0.25 else "SAFE",
+                    "text": f"Anomaly Guard deviation index: {anomaly_score:.2f} ({'Elevation' if anomaly_score >= 0.25 else 'Baseline'})",
+                },
+                {
+                    "time": now_time.strftime("%H:%M"),
+                    "icon": "GOVERNANCE",
+                    "text": f"Meta-Controller: '{dominant_model}' dominant under {context_profile}",
+                },
+            ]
 
         overall_confidence = int(round(final_conf * 100))
-
-        # 8. Dynamic "WHY?" Explanations
-        explanations = []
-        if abs(dev_flow_rate) <= 15.0:
-            explanations.append(f"Traffic volume remains within learned baseline ({dev_flow_rate:+.1f}%)")
-        else:
-            explanations.append(f"Traffic volume deviates {dev_flow_rate:+.1f}% from learned baseline")
-
-        if abs(dev_source_div) <= 10.0:
-            explanations.append("Source diversity and host entropy remain stable")
-        else:
-            explanations.append(f"Source diversity shift detected ({dev_source_div:+.1f}%)")
-
-        if dev_periodicity > 8.0:
-            explanations.append(f"Periodic behavior elevated (+{dev_periodicity:.1f}%), monitored by Temporal GRU")
-        else:
-            explanations.append("Inter-arrival intervals display natural non-beaconing variance")
-
-        if open_alert_count == 0 and final_class == "Benign":
-            explanations.append("Zero active high-confidence threat clusters detected")
-        else:
-            explanations.append(f"{open_alert_count} active alert(s) under review; Top signal: '{final_class}'")
-
-        if model_agreement_pct >= 80:
-            explanations.append(f"Multi-model ensemble consensus is high ({model_agreement_pct}% agreement)")
-        else:
-            explanations.append(f"Model disagreement observed ({model_agreement_pct}% consensus); Meta-Controller arbitrating")
-
-        # 9. Dynamic Health Events Timeline
-        now_time = datetime.now(timezone.utc)
-        events = [
-            {
-                "time": now_time.strftime("%H:%M"),
-                "icon": "NORMAL",
-                "text": f"Behavioral baseline active ({baseline_info.get('flows', 0):,} reference flows)",
-            },
-            {
-                "time": now_time.strftime("%H:%M"),
-                "icon": "SAFE" if open_alert_count == 0 else "ALERT",
-                "text": "No active high-confidence threats" if open_alert_count == 0 else f"{open_alert_count} alert(s) flagged",
-            },
-            {
-                "time": now_time.strftime("%H:%M"),
-                "icon": "ANOMALY" if anomaly_score >= 0.25 else "SAFE",
-                "text": f"Anomaly Guard deviation index: {anomaly_score:.2f} ({'Elevation' if anomaly_score >= 0.25 else 'Baseline'})",
-            },
-            {
-                "time": now_time.strftime("%H:%M"),
-                "icon": "GOVERNANCE",
-                "text": f"Meta-Controller: '{dominant_model}' dominant under {context_profile}",
-            },
-        ]
 
         # 10. Self-Learning Memory Stats
         mem_summary = {"total_episodes": 0, "active_memory_size": 0}
@@ -319,7 +361,10 @@ class BehavioralHealthEngine:
 
         # Compile Full Behavioral Report Payload
         return {
-            "status": "HEALTHY" if health_score >= 65 else "ATTENTION",
+            "status": system_status,
+            "sensor_id": sensor_id,
+            "active_model_versions": active_model_versions,
+
             "timestamp": utc_iso(),
             "uptime_seconds": int(time.time() - getattr(service, "started", time.time())),
 
@@ -340,12 +385,14 @@ class BehavioralHealthEngine:
             # Traffic condition
             "traffic": {
                 "flows": flow_count,
+                "flow_count": flow_count,
                 "flows_per_second": flows_per_sec,
                 "bytes_per_second": bytes_per_sec,
                 "unique_sources": len(unique_sources),
                 "unique_destinations": len(unique_destinations),
                 "anomalous_flows": int(round(len(recent_flows) * min(1.0, anomaly_score * 2.0))),
                 "open_alerts": open_alert_count,
+                "active_alerts": open_alert_count,
                 "total_alerts": total_alert_count,
             },
 

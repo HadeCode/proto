@@ -28,12 +28,18 @@ export type MLFeedbackRecord = {
   feedback_type: "FALSE_POSITIVE" | "RECLASSIFIED" | "CONFIRMED" | "MISSED_THREAT";
   notes: string;
   retrained_count: number;
+  sensor_id?: string;
+  model_version?: string;
+  validation_status?: "ACCEPTED" | "REJECTED";
+  validator_reason?: string;
 };
 
 export type MLFeedbackSummary = {
   total_samples: number;
   false_positives: number;
   reclassifications: number;
+  accepted_samples?: number;
+  rejected_samples?: number;
   recent_feedback: MLFeedbackRecord[];
 };
 
@@ -127,6 +133,85 @@ export type MLStatus = {
   model_reliability_table?: Record<string, ModelReliabilityEntry>;
   behavior_memory?: BehaviorMemoryInfo;
   temporal_model?: TemporalModelInfo;
+  feedback_security?: {
+    total_validated: number;
+    accepted: number;
+    rejected: number;
+    mitigation_policy: string;
+  };
+  model_lifecycle?: {
+    sensor_id: string;
+    feature_schema_version: string;
+    code_version: string;
+    active_versions: Record<string, string>;
+    registry: Record<string, any>;
+  };
+};
+
+export type ModelManifest = {
+  model_name: string;
+  version: string;
+  status: "candidate" | "approved" | "archived" | "rejected";
+  created_at: string;
+  activated_at?: string;
+  metrics: {
+    accuracy: number;
+    recall: number;
+    precision: number;
+    f1_score: number;
+    benign_false_positive_rate: number;
+    latency_ms: number;
+  };
+  artifacts?: {
+    model_file?: string;
+    metrics_file?: string;
+  };
+  feature_schema_version?: string;
+  dataset_fingerprint?: string;
+};
+
+export type ModelRegistryEntry = {
+  active_version: string;
+  versions: Record<string, ModelManifest>;
+};
+
+export type ModelRegistryStatus = {
+  sensor_id: string;
+  registry: {
+    schema_version: string;
+    models: Record<string, ModelRegistryEntry>;
+    updated_at: string;
+  };
+  active_model_name?: string;
+};
+
+export type SensorInfo = {
+  sensor_id: string;
+  active_model_versions: Record<string, string>;
+  controller_version: string;
+  feature_schema_version: string;
+  configuration_version: string;
+  baseline_version: string;
+  status: string;
+};
+
+export type CandidateValidationResult = {
+  candidate_version: string;
+  status: "candidate" | "rejected";
+  validation_gate: {
+    passed: boolean;
+    status: string;
+    checks: Record<string, {
+      passed: boolean;
+      active: number;
+      candidate: number;
+      diff?: number;
+      rule?: string;
+    }>;
+    reasons: string[];
+  };
+  manifest?: ModelManifest;
+  message: string;
 };
 
 export type MLPredictResult = {
@@ -154,26 +239,28 @@ export type HealthCheck = {
 
 export type BehavioralHealth = {
   score: number;
-  status: "NORMAL" | "WATCH" | "DEGRADED" | "CRITICAL";
+  status: "NORMAL" | "WATCH" | "DEGRADED" | "CRITICAL" | "INSUFFICIENT_DATA";
   confidence: number;
   stability: number;
 };
 
 export type ThreatRisk = {
   score: number;
-  level: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+  level: "LOW" | "MODERATE" | "HIGH" | "CRITICAL" | "INSUFFICIENT_DATA";
   confidence: number;
   threat_candidates: number;
 };
 
 export type TrafficCondition = {
   flows: number;
+  flow_count?: number;
   flows_per_second: number;
   bytes_per_second: number;
   unique_sources: number;
   unique_destinations: number;
   anomalous_flows: number;
   open_alerts: number;
+  active_alerts?: number;
   total_alerts: number;
 };
 
@@ -220,8 +307,10 @@ export type SelfLearningStatus = {
 };
 
 export type HealthReportData = {
-  status: "HEALTHY" | "DEGRADED" | "CRITICAL" | "ATTENTION";
+  status: "HEALTHY" | "DEGRADED" | "CRITICAL" | "ATTENTION" | "INSUFFICIENT_DATA";
   system_score: number;
+  sensor_id?: string;
+  active_model_versions?: Record<string, string>;
   timestamp: string;
   uptime_seconds: number;
   uptime_human: string;
@@ -307,6 +396,8 @@ type Snapshot = {
   config: Config;
   baseline: { median: Record<string, number>; mad: Record<string, number>; fitted_at: string | null; flows: number };
   ml: MLStatus;
+  sensor?: SensorInfo;
+  model_lifecycle?: ModelRegistryStatus;
   health?: HealthReportData;
   simulation: { status: string; scenario: string; total: number; processed: number; detected: string[]; missing: string[]; error?: string };
   summary: { flows_processed: number; alerts: number; flows_per_second: number; bytes_per_second: number; last_flow: string | null; protocols: Record<string, number>; uptime_seconds: number; collector_flows: number; simulation_flows: number };
@@ -314,6 +405,29 @@ type Snapshot = {
 const EMPTY: Snapshot = {
   alerts: [], flows: [], detectors: [], dns: [], tls: [], config: {},
   baseline: { median: {}, mad: {}, fitted_at: null, flows: 0 },
+  sensor: {
+    sensor_id: "ARGUS-SENSOR-001",
+    active_model_versions: {
+      random_forest: "1.0.0",
+      gradient_boost: "1.0.0",
+      anomaly_guard: "1.0.0",
+      temporal_gru: "1.0.0",
+    },
+    controller_version: "1.1.0",
+    feature_schema_version: "features-v1",
+    configuration_version: "1.1.0",
+    baseline_version: "1.0.0",
+    status: "ONLINE",
+  },
+  model_lifecycle: {
+    sensor_id: "ARGUS-SENSOR-001",
+    registry: {
+      schema_version: "models-v1",
+      models: {},
+      updated_at: new Date().toISOString(),
+    },
+    active_model_name: "meta_controller",
+  },
   ml: {
     status: "ready", active_model: "meta_controller", active_model_name: "Self-Learning Meta-Controller",
     last_trained_at: null, accuracy: 0.998, recall: 1.0, precision: 0.995, f1_score: 0.998,
@@ -512,12 +626,14 @@ export function useArgus() {
     DNS_RECORDS: ctx.data.dns,
     TLS_SESSIONS: ctx.data.tls,
     ML: ctx.data.ml,
+    SENSOR: ctx.data.sensor ?? EMPTY.sensor!,
+    MODEL_LIFECYCLE: ctx.data.model_lifecycle ?? EMPTY.model_lifecycle!,
     HEALTH_REPORT: ctx.data.health ?? EMPTY.health!,
     runHealthAudit: async () => api<HealthReportData>("/health"),
     fetchHistoricalReport: async (window = "1h") => api<any>(`/health/report?window=${encodeURIComponent(window)}`),
     updateAlert: (id: string, status: AlertStatus) => ctx.mutate(`/alerts/${encodeURIComponent(id)}`, "PATCH", { status }),
     submitAlertFeedback: async (alertId: string, trueClass: string, feedbackType: "FALSE_POSITIVE" | "RECLASSIFIED" | "CONFIRMED", notes = "") => {
-      const res = await api<{ success: boolean; message: string }>("/ml/feedback", "POST", {
+      const res = await api<{ success: boolean; message: string; validation_status?: string; validator_reason?: string }>("/ml/feedback", "POST", {
         alert_id: alertId,
         true_class: trueClass,
         feedback_type: feedbackType,
@@ -532,6 +648,14 @@ export function useArgus() {
     retrainSelf: async (runs_per_class = 14) => ctx.mutate("/ml/retrain-self", "POST", { runs_per_class }),
     switchMLModel: async (model_type: "meta_controller" | "random_forest" | "xgboost") => ctx.mutate("/ml/switch-model", "POST", { model_type }),
     predictML: async (flow: Record<string, unknown>) => api<MLPredictResult>("/ml/predict", "POST", flow),
+    rollbackModel: async (modelName: string, targetVersion: string) =>
+      api<{ success: boolean; message: string; rollback_to: string }>("/ml/models/rollback", "POST", { model_name: modelName, target_version: targetVersion }),
+    activateModelVersion: async (modelName: string, version: string) =>
+      api<{ success: boolean; message: string; activated_version: string }>("/ml/models/activate", "POST", { model_name: modelName, version }),
+    trainCandidateModel: async (runs_per_class = 14) =>
+      api<CandidateValidationResult>("/ml/candidate/train", "POST", { runs_per_class }),
+    fetchSensorInfo: async () => api<SensorInfo>("/sensor"),
+    fetchModelRegistry: async () => api<ModelRegistryStatus>("/ml/models"),
   };
 }
 

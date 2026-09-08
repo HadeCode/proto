@@ -75,6 +75,17 @@ class DetectionService:
                 retrained_count INTEGER DEFAULT 0
             );
         """)
+        for col, col_type in [
+            ("sensor_id", "TEXT DEFAULT 'ARGUS-SENSOR-001'"),
+            ("model_version", "TEXT DEFAULT '1.0.0'"),
+            ("validation_status", "TEXT DEFAULT 'ACCEPTED'"),
+            ("validator_reason", "TEXT DEFAULT ''"),
+        ]:
+            try:
+                self.db.execute(f"ALTER TABLE ml_feedback ADD COLUMN {col} {col_type}")
+            except sqlite3.OperationalError:
+                pass
+        self.sensor_id = os.environ.get("ARGUS_SENSOR_ID", "ARGUS-SENSOR-001")
         self.config = DetectorConfig.from_dict(self.setting("config", {}))
         self.baseline = MetadataBaseline.from_dict(self.setting("baseline", {"median": {}, "mad": {}}))
         self.detector = ArgusOneDetector(self.config, self.baseline)
@@ -189,8 +200,13 @@ class DetectionService:
                 src_ip = flow_dict.get("src_ip", src_ip)
                 dst_ip = flow_dict.get("dst_ip", dst_ip)
                 protocol = flow_dict.get("protocol", protocol)
-                from argus_ml import FlowFeatureExtractor
-                features = FlowFeatureExtractor.extract_from_window([flow_dict], target_flow=flow_dict)
+                if "features" in flow_dict and isinstance(flow_dict["features"], dict):
+                    features = dict(flow_dict["features"])
+                elif any(k in flow_dict for k in ["syn_ratio", "flows_per_second", "bytes_per_second", "udp_ratio"]):
+                    features = dict(flow_dict)
+                else:
+                    from argus_ml import FlowFeatureExtractor
+                    features = FlowFeatureExtractor.extract_from_window([flow_dict], target_flow=flow_dict)
 
             if not features:
                 # Synthesize baseline features from evidence if flow was pruned
@@ -198,14 +214,14 @@ class DetectionService:
                 dummy = {"timestamp": time.time(), "src_ip": src_ip, "dst_ip": dst_ip, "src_port": 50000, "dst_port": 80, "protocol": protocol, "bytes_out": 100, "bytes_in": 100, "packets_out": 2, "packets_in": 2, "tcp_flags": "A", "context": {}}
                 features = FlowFeatureExtractor.extract_from_window([dummy], target_flow=dummy)
 
-            self.db.execute("""
-                INSERT INTO ml_feedback (timestamp, alert_id, source_ip, dst_ip, protocol, predicted_class, confidence, true_class, feedback_type, features_json, notes, retrained_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-            """, (utc(), alert_id, src_ip, dst_ip, protocol, predicted_class, confidence, true_class, feedback_type, json.dumps(features), notes))
-            self.db.commit()
+            act_ver = "1.0.0"
+            if self.ml_engine and hasattr(self.ml_engine, "registry_manager"):
+                act_ver = self.ml_engine.registry_manager.get_active_version("random_forest") or "1.0.0"
 
-            # Trigger immediate online adaptation in the Self-Learning Meta-Controller
+            # Trigger immediate online adaptation in the Self-Learning Meta-Controller with validation
             online_adaptation = {}
+            validation_status = "ACCEPTED"
+            validator_reason = "Operational analyst feedback validated."
             if self.ml_engine and hasattr(self.ml_engine, "learn_from_feedback"):
                 try:
                     online_adaptation = self.ml_engine.learn_from_feedback(
@@ -215,8 +231,16 @@ class DetectionService:
                         feedback_type=feedback_type,
                         notes=notes,
                     )
+                    validation_status = online_adaptation.get("validation_status", "ACCEPTED")
+                    validator_reason = online_adaptation.get("validator_reason", validator_reason)
                 except Exception as e:
                     online_adaptation = {"error": str(e)}
+
+            self.db.execute("""
+                INSERT INTO ml_feedback (timestamp, alert_id, source_ip, dst_ip, protocol, predicted_class, confidence, true_class, feedback_type, features_json, notes, retrained_count, sensor_id, model_version, validation_status, validator_reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+            """, (utc(), alert_id, src_ip, dst_ip, protocol, predicted_class, confidence, true_class, feedback_type, json.dumps(features), notes, self.sensor_id, act_ver, validation_status, validator_reason))
+            self.db.commit()
 
             return {
                 "success": True,
@@ -225,13 +249,17 @@ class DetectionService:
                 "true_class": true_class,
                 "feedback_type": feedback_type,
                 "notes": notes,
+                "sensor_id": self.sensor_id,
+                "model_version": act_ver,
+                "validation_status": validation_status,
+                "validator_reason": validator_reason,
                 "online_adaptation": online_adaptation,
-                "message": "Feedback recorded. Meta-Controller adapted online and buffered for retraining.",
+                "message": f"Feedback {validation_status}: {validator_reason}",
             }
 
     def get_feedback_summary(self):
         with self.lock:
-            rows = self.db.execute("SELECT id, timestamp, alert_id, source_ip, dst_ip, protocol, predicted_class, confidence, true_class, feedback_type, features_json, notes, retrained_count FROM ml_feedback ORDER BY id DESC LIMIT 50").fetchall()
+            rows = self.db.execute("SELECT id, timestamp, alert_id, source_ip, dst_ip, protocol, predicted_class, confidence, true_class, feedback_type, features_json, notes, retrained_count, sensor_id, model_version, validation_status, validator_reason FROM ml_feedback ORDER BY id DESC LIMIT 50").fetchall()
             records = []
             for r in rows:
                 records.append({
@@ -247,14 +275,22 @@ class DetectionService:
                     "feedback_type": r[9],
                     "notes": r[11],
                     "retrained_count": r[12],
+                    "sensor_id": r[13] if len(r) > 13 and r[13] else self.sensor_id,
+                    "model_version": r[14] if len(r) > 14 and r[14] else "1.0.0",
+                    "validation_status": r[15] if len(r) > 15 and r[15] else "ACCEPTED",
+                    "validator_reason": r[16] if len(r) > 16 and r[16] else "",
                 })
             total = self.db.execute("SELECT count(*) FROM ml_feedback").fetchone()[0]
             false_positives = self.db.execute("SELECT count(*) FROM ml_feedback WHERE feedback_type = 'FALSE_POSITIVE'").fetchone()[0]
             reclassifications = self.db.execute("SELECT count(*) FROM ml_feedback WHERE feedback_type = 'RECLASSIFIED'").fetchone()[0]
+            accepted_count = self.db.execute("SELECT count(*) FROM ml_feedback WHERE validation_status = 'ACCEPTED'").fetchone()[0]
+            rejected_count = self.db.execute("SELECT count(*) FROM ml_feedback WHERE validation_status = 'REJECTED'").fetchone()[0]
             return {
                 "total_samples": total,
                 "false_positives": false_positives,
                 "reclassifications": reclassifications,
+                "accepted_samples": accepted_count,
+                "rejected_samples": rejected_count,
                 "recent_feedback": records,
             }
 
@@ -264,8 +300,8 @@ class DetectionService:
         with self.lock:
             if self.simulation["status"] in {"running", "stopping"}:
                 raise RuntimeError("Wait for the simulation to finish before retraining ML models.")
-            # Fetch all feedback samples
-            rows = self.db.execute("SELECT features_json, true_class, predicted_class, feedback_type FROM ml_feedback").fetchall()
+            # Fetch ONLY accepted feedback samples to prevent poisoning
+            rows = self.db.execute("SELECT features_json, true_class, predicted_class, feedback_type FROM ml_feedback WHERE validation_status = 'ACCEPTED'").fetchall()
             feedback_samples = []
             for r in rows:
                 try:
@@ -281,9 +317,61 @@ class DetectionService:
 
             metrics = self.ml_engine.train(runs_per_class=runs_per_class, feedback_samples=feedback_samples)
             if feedback_samples:
-                self.db.execute("UPDATE ml_feedback SET retrained_count = retrained_count + 1")
+                self.db.execute("UPDATE ml_feedback SET retrained_count = retrained_count + 1 WHERE validation_status = 'ACCEPTED'")
                 self.db.commit()
             return metrics
+
+    def sensor_info(self) -> dict[str, Any]:
+        """Return identity and state profile of this sensor node."""
+        active_vers = {}
+        if self.ml_engine and hasattr(self.ml_engine, "registry_manager"):
+            for m in ("random_forest", "gradient_boost", "anomaly_guard", "temporal_gru"):
+                active_vers[m] = self.ml_engine.registry_manager.get_active_version(m) or "1.0.0"
+        else:
+            active_vers = {"random_forest": "1.0.0", "gradient_boost": "1.0.0", "anomaly_guard": "1.0.0", "temporal_gru": "1.0.0"}
+
+        return {
+            "sensor_id": self.sensor_id,
+            "active_model_versions": active_vers,
+            "controller_version": "1.1.0",
+            "feature_schema_version": "features-v1",
+            "configuration_version": "1.1.0",
+            "baseline_version": "1.0.0",
+            "status": "ONLINE",
+        }
+
+    def get_model_registry(self) -> dict[str, Any]:
+        """Expose immutable versioned model artifacts and manifests."""
+        if not self.ml_engine or not hasattr(self.ml_engine, "registry_manager"):
+            return {"sensor_id": self.sensor_id, "status": "unavailable", "models": {}}
+        return {
+            "sensor_id": self.sensor_id,
+            "registry": self.ml_engine.registry_manager.get_registry(),
+            "active_model_name": self.ml_engine.model_type,
+        }
+
+    def rollback_model(self, model_name: str, target_version: str) -> dict[str, Any]:
+        """Safely restore a previously approved version pointer without deleting historical versions."""
+        if not self.ml_engine:
+            raise RuntimeError("Machine learning engine is not available")
+        with self.lock:
+            return self.ml_engine.rollback_model(model_name, target_version)
+
+    def activate_model_version(self, model_name: str, version: str) -> dict[str, Any]:
+        """Promote an approved version to active production model."""
+        if not self.ml_engine:
+            raise RuntimeError("Machine learning engine is not available")
+        with self.lock:
+            return self.ml_engine.activate_model_version(model_name, version)
+
+    def train_candidate_model(self, runs_per_class: int = 14) -> dict[str, Any]:
+        """Train a candidate model and submit it to the validation gate without replacing production models."""
+        if not self.ml_engine:
+            raise RuntimeError("Machine learning engine is not available")
+        with self.lock:
+            if self.simulation["status"] in {"running", "stopping"}:
+                raise RuntimeError("Wait for the simulation to finish before candidate training.")
+            return self.ml_engine.train_candidate(runs_per_class=runs_per_class)
 
     def fit_baseline(self, values):
         baseline = MetadataBaseline().fit(values)
@@ -365,6 +453,8 @@ class DetectionService:
                 tls.append({"source": f["src_ip"], "destination": f["dst_ip"], "protocol": "QUIC" if ctx.get("quic_metadata") else "TLS", **{k: t.get(k, "-") for k in ("ja3", "ja3s", "ja4", "sni", "alpn")}, "reputation": str(ctx.get("destination_reputation") or "Unknown"), "risk": f["risk"]})
         return {"alerts": alerts, "flows": flows[:1000], "detectors": detectors, "dns": dns[:1000], "tls": tls[:1000],
                 "config": config, "baseline": baseline, "simulation": simulation,
+                "sensor": self.sensor_info(),
+                "model_lifecycle": self.get_model_registry(),
                 "ml": self.ml_status(),
                 "health": self.health_report(),
                 "summary": {"flows_processed": len(flows), "alerts": len(alerts), "flows_per_second": round(len(recent)/60, 2),
@@ -399,7 +489,12 @@ class DetectionService:
         if not self.ml_engine:
             raise RuntimeError("Machine learning engine is not available")
         from argus_ml import FlowFeatureExtractor
-        features = FlowFeatureExtractor.extract_from_window([flow_dict], target_flow=flow_dict)
+        if "features" in flow_dict and isinstance(flow_dict["features"], dict):
+            features = dict(flow_dict["features"])
+        elif any(k in flow_dict for k in ["syn_ratio", "flows_per_second", "bytes_per_second", "udp_ratio"]):
+            features = dict(flow_dict)
+        else:
+            features = FlowFeatureExtractor.extract_from_window([flow_dict], target_flow=flow_dict)
         pred = self.ml_engine.predict(features, flows=[flow_dict])
         return {
             "prediction": pred.to_dict(),
@@ -642,13 +737,21 @@ class DetectionService:
                 "dominant_model": report["governance"]["dominant_model"],
             },
             "conclusion": (
-                "Network behavior remains predominantly within the learned baseline. "
-                "No critical anomalous threat cluster requiring escalation was identified."
-                if threat_score < 50 else
-                f"Elevated behavioral threat activity detected ({threat_level} risk). "
-                f"Meta-Controller prioritized {report['governance']['dominant_model']} for rapid triage."
+                "Sensor is operational on passive metadata capture interface. "
+                "Awaiting live network flows to establish dynamic behavioral metrics. "
+                "Baseline and multi-model threat detectors are armed."
+                if (report["behavioral_health"]["status"] == "INSUFFICIENT_DATA" or report["traffic"].get("flow_count", 0) == 0) else
+                ("Network behavior remains predominantly within the learned baseline. "
+                 "No critical anomalous threat cluster requiring escalation was identified."
+                 if threat_score < 50 else
+                 f"Elevated behavioral threat activity detected ({threat_level} risk). "
+                 f"Meta-Controller prioritized {report['governance']['dominant_model']} for rapid triage.")
             ),
-            "recommended_action": "Continue passive monitoring." if threat_score < 50 else "Initiate flow inspection on highlighted threat source addresses.",
+            "recommended_action": (
+                "Awaiting network traffic on passive interface or start a simulation workload to test detection pipeline."
+                if (report["behavioral_health"]["status"] == "INSUFFICIENT_DATA" or report["traffic"].get("flow_count", 0) == 0) else
+                ("Continue passive monitoring." if threat_score < 50 else "Initiate flow inspection on highlighted threat source addresses.")
+            ),
             "raw_report": report,
         }
 

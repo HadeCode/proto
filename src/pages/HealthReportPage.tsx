@@ -19,17 +19,28 @@ export default function HealthReportPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-[24px] font-bold text-[#F3F5F7] tracking-tight">Behavioral Network Health</h1>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-[#20D3A2]/15 text-[#20D3A2] border border-[#20D3A2]/40">
-              HEALTH: {bHealth.score}/100 • {bHealth.status}
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-[#4C9AFF]/15 text-[#4C9AFF] border border-[#4C9AFF]/40">
+              {report.sensor_id || "ARGUS-SENSOR-001"}
             </span>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-[#4C9AFF]/15 text-[#4C9AFF] border border-[#4C9AFF]/40">
-              THREAT RISK: {threatRisk.score}/100 • {threatRisk.level}
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase border ${
+              bHealth.status === "INSUFFICIENT_DATA"
+                ? "bg-[#8A99AD]/15 text-[#8A99AD] border-[#8A99AD]/40"
+                : "bg-[#20D3A2]/15 text-[#20D3A2] border-[#20D3A2]/40"
+            }`}>
+              HEALTH: {bHealth.status === "INSUFFICIENT_DATA" ? "AWAITING FLOWS" : `${bHealth.score}/100 • ${bHealth.status}`}
+            </span>
+            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase border ${
+              threatRisk.level === "INSUFFICIENT_DATA"
+                ? "bg-[#8A99AD]/15 text-[#8A99AD] border-[#8A99AD]/40"
+                : "bg-[#4C9AFF]/15 text-[#4C9AFF] border-[#4C9AFF]/40"
+            }`}>
+              THREAT RISK: {threatRisk.level === "INSUFFICIENT_DATA" ? "AWAITING FLOWS" : `${threatRisk.score}/100 • ${threatRisk.level}`}
             </span>
           </div>
           <p className="text-[13px] text-[#9AA4B2] mt-0.5">
-            NIST continuous monitoring dashboard: profiling normal behavior, recognizing baseline deviations, and multi-model risk correlation.
+            NIST continuous monitoring dashboard: profiling normal behavior, recognizing baseline deviations, and multi-model risk correlation on passive unidirectional metadata.
           </p>
         </div>
         <div className="flex items-center gap-3">

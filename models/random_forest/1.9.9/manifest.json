@@ -1,0 +1,24 @@
+{
+  "model_id": "argus-random-forest",
+  "version": "1.9.9",
+  "algorithm": "random_forest",
+  "feature_schema": "features-v1",
+  "dataset_id": "benchmark-time-split-v1",
+  "dataset_hash": "0447b6f5ba07eba0",
+  "code_version": "1.1.0",
+  "created_at": "2026-09-08T15:15:12.224763+00:00",
+  "metrics": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0,
+    "benign_false_positive_rate": 0.0,
+    "latency_ms": 0.327
+  },
+  "status": "candidate",
+  "compatibility": {
+    "python": ">=3.10",
+    "feature_schema": "features-v1",
+    "features_count": 29
+  }
+}

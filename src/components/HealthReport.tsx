@@ -116,22 +116,30 @@ export default function HealthReport() {
   };
 
   // Color helpers
-  const getHealthBadge = (score: number) => {
+  const isInsufficientData = bHealth.status === "INSUFFICIENT_DATA" || (traffic.flows === 0 && bHealth.score === 0);
+
+  const getHealthBadge = (score: number, status?: string) => {
+    if (status === "INSUFFICIENT_DATA" || isInsufficientData) {
+      return { bg: "bg-[#8A99AD]/15 text-[#8A99AD] border-[#8A99AD]/40", text: "INSUFFICIENT DATA" };
+    }
     if (score >= 85) return { bg: "bg-[#20D3A2]/15 text-[#20D3A2] border-[#20D3A2]/40", text: "NORMAL" };
     if (score >= 65) return { bg: "bg-[#FFB020]/15 text-[#FFB020] border-[#FFB020]/40", text: "WATCH" };
     if (score >= 45) return { bg: "bg-[#FF6B6B]/15 text-[#FF6B6B] border-[#FF6B6B]/40", text: "DEGRADED" };
     return { bg: "bg-[#FF3366]/20 text-[#FF3366] border-[#FF3366]/50", text: "CRITICAL" };
   };
 
-  const getThreatBadge = (score: number) => {
+  const getThreatBadge = (score: number, level?: string) => {
+    if (level === "INSUFFICIENT_DATA" || isInsufficientData) {
+      return { bg: "bg-[#8A99AD]/15 text-[#8A99AD] border-[#8A99AD]/40", text: "AWAITING FLOWS" };
+    }
     if (score < 25) return { bg: "bg-[#20D3A2]/15 text-[#20D3A2] border-[#20D3A2]/40", text: "LOW" };
     if (score < 55) return { bg: "bg-[#4C9AFF]/15 text-[#4C9AFF] border-[#4C9AFF]/40", text: "MODERATE" };
     if (score < 80) return { bg: "bg-[#FFB020]/15 text-[#FFB020] border-[#FFB020]/40", text: "HIGH" };
     return { bg: "bg-[#FF3366]/20 text-[#FF3366] border-[#FF3366]/50", text: "CRITICAL" };
   };
 
-  const healthBadge = getHealthBadge(bHealth.score);
-  const threatBadge = getThreatBadge(threatRisk.score);
+  const healthBadge = getHealthBadge(bHealth.score, bHealth.status);
+  const threatBadge = getThreatBadge(threatRisk.score, threatRisk.level);
 
   return (
     <div className="space-y-5">
@@ -197,6 +205,50 @@ export default function HealthReport() {
             </button>
           </div>
         </div>
+
+        {/* Sensor Node & Governance Context Bar */}
+        <div className="px-4 sm:px-5 py-2.5 bg-[#0C1017] border-b border-[#242B35]/60 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-[#66707D]">SENSOR NODE:</span>
+            <span className="text-[#4C9AFF] font-bold px-2 py-0.5 rounded bg-[#4C9AFF]/10 border border-[#4C9AFF]/30">
+              {report.sensor_id || "ARGUS-SENSOR-001"}
+            </span>
+            <span className="text-[#66707D]">• MODE:</span>
+            <span className="text-[#20D3A2]">Passive Unidirectional TAP</span>
+            <span className="text-[#66707D]">• SCHEMA:</span>
+            <span className="text-[#F3F5F7]">features-v1</span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[#66707D]">ACTIVE MODELS:</span>
+            <span className="text-[#9AA4B2] px-1.5 py-0.5 rounded bg-[#151B23] border border-[#242B35]">
+              RF v{report.active_model_versions?.random_forest || "1.0.0"}
+            </span>
+            <span className="text-[#9AA4B2] px-1.5 py-0.5 rounded bg-[#151B23] border border-[#242B35]">
+              GB v{report.active_model_versions?.gradient_boost || "1.0.0"}
+            </span>
+            <span className="text-[#9AA4B2] px-1.5 py-0.5 rounded bg-[#151B23] border border-[#242B35]">
+              Guard v{report.active_model_versions?.anomaly_guard || "1.0.0"}
+            </span>
+            <span className="text-[#9AA4B2] px-1.5 py-0.5 rounded bg-[#151B23] border border-[#242B35]">
+              GRU v{report.active_model_versions?.temporal_gru || "1.0.0"}
+            </span>
+          </div>
+        </div>
+
+        {/* Insufficient Data Alert Banner (when traffic is 0) */}
+        {isInsufficientData && (
+          <div className="mx-4 sm:mx-5 mt-4 p-3 rounded-lg border border-[#4C9AFF]/40 bg-[#4C9AFF]/10 flex items-start gap-3">
+            <span className="text-lg">📡</span>
+            <div className="text-[12px]">
+              <div className="font-semibold text-[#4C9AFF]">
+                Awaiting Live Telemetry on Passive Capture Interface
+              </div>
+              <p className="text-[#9AA4B2] mt-0.5">
+                0 flows observed in current window. Dual health & risk indices, anomaly deviations, and multi-horizon trendlines will dynamically calibrate upon live flow arrival. All 4 ML classifiers and Anomaly Guard are armed and loaded in memory.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* SECTION 1: TWO DISTINCT CORE SCORES (HEALTH vs THREAT RISK) */}
         <div className="p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-4 bg-[#0A0D12]">

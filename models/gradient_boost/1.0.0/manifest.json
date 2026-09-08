@@ -1,0 +1,24 @@
+{
+  "model_id": "argus-gradient-boost",
+  "version": "1.0.0",
+  "algorithm": "gradient_boost",
+  "feature_schema": "features-v1",
+  "dataset_id": "benchmark-time-split-v1",
+  "dataset_hash": "cedeaf07444c16b3",
+  "code_version": "1.1.0",
+  "created_at": "2026-09-08T16:08:10.447986+00:00",
+  "metrics": {
+    "accuracy": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1_score": 1.0,
+    "benign_false_positive_rate": 0.0,
+    "latency_ms": 1.033
+  },
+  "status": "active",
+  "compatibility": {
+    "python": ">=3.10",
+    "feature_schema": "features-v1",
+    "features_count": 29
+  }
+}
